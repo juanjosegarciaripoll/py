@@ -1,7 +1,7 @@
 """Anthropic provider implementation."""
 
 import json
-import typing as t
+from collections.abc import AsyncIterator
 
 import httpx
 
@@ -62,7 +62,7 @@ class AnthropicProvider(Provider):
         system_prompt: str,
         messages: list[Message],
         tools: list[Tool],
-    ) -> t.AsyncIterator[AssistantMessageEvent]:
+    ) -> AsyncIterator[AssistantMessageEvent]:
         """Stream assistant messages from Anthropic."""
         return self._stream_impl(model, system_prompt, messages, tools)
 
@@ -72,7 +72,7 @@ class AnthropicProvider(Provider):
         system_prompt: str,
         messages: list[Message],
         tools: list[Tool],
-    ) -> t.AsyncIterator[AssistantMessageEvent]:
+    ) -> AsyncIterator[AssistantMessageEvent]:
         headers = {
             "x-api-key": self.api_key,
             "anthropic-version": "2023-06-01",
@@ -155,3 +155,28 @@ class AnthropicProvider(Provider):
         if event_type_obj == "message_stop":
             return AssistantMessageEvent(finish_reason="stop")
         return None
+
+    def check_model_access(self, model: str) -> tuple[bool, str | None]:
+        """Check model availability with a minimal non-stream request."""
+        headers = {
+            "x-api-key": self.api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        payload: dict[str, object] = {
+            "model": model,
+            "max_tokens": 1,
+            "messages": [{"role": "user", "content": "ping"}],
+            "stream": False,
+        }
+        try:
+            with httpx.Client() as client:
+                response = client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers=headers,
+                    json=payload,
+                )
+                response.raise_for_status()
+        except httpx.HTTPError as exc:
+            return False, str(exc)
+        return True, None

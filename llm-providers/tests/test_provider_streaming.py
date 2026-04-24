@@ -3,11 +3,14 @@
 import asyncio
 import json
 import sys
-import typing as t
 import unittest
+from collections.abc import AsyncIterator
 from pathlib import Path
 from types import TracebackType
+from typing import Self, TypedDict, TypeGuard
 from unittest.mock import patch
+
+import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -22,9 +25,11 @@ OPENAI_EXPECTED_REQUEST_MESSAGES = 2
 OPENAI_COMPAT_EXPECTED_EVENT_COUNT = 2
 ANTHROPIC_EXPECTED_EVENT_COUNT = 3
 ANTHROPIC_EXPECTED_TOTAL_TOKENS = 9
+ACCESS_CHECK_OK = True
+ACCESS_CHECK_FAILURE_MESSAGE = "network error"
 
 
-class RequestCall(t.TypedDict):
+class RequestCall(TypedDict):
     """Recorded outbound request details for assertions."""
 
     method: str
@@ -39,7 +44,7 @@ class FakeResponse:
     def __init__(self, lines: list[str]) -> None:
         self._lines = lines
 
-    async def __aenter__(self) -> t.Self:
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(
@@ -53,7 +58,7 @@ class FakeResponse:
     def raise_for_status(self) -> None:
         return None
 
-    async def aiter_lines(self) -> t.AsyncIterator[str]:
+    async def aiter_lines(self) -> AsyncIterator[str]:
         for line in self._lines:
             yield line
 
@@ -65,7 +70,7 @@ class FakeAsyncClient:
         self._lines = lines
         self._calls = calls
 
-    async def __aenter__(self) -> t.Self:
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(
@@ -90,6 +95,58 @@ class FakeAsyncClient:
         return FakeResponse(self._lines)
 
 
+class FakeSyncResponse:
+    """Sync HTTP response stub used by accessibility checks."""
+
+    def __init__(self, *, should_raise: bool = False) -> None:
+        self._should_raise = should_raise
+
+    def raise_for_status(self) -> None:
+        if self._should_raise:
+            msg = ACCESS_CHECK_FAILURE_MESSAGE
+            raise httpx.HTTPError(msg)
+
+
+class FakeSyncClient:
+    """Sync HTTP client stub for model accessibility checks."""
+
+    def __init__(
+        self,
+        calls: list[RequestCall],
+        *,
+        should_raise: bool = False,
+    ) -> None:
+        self._calls = calls
+        self._should_raise = should_raise
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        del exc_type, exc, tb
+
+    def get(self, url: str, *, headers: dict[str, str]) -> FakeSyncResponse:
+        self._calls.append(RequestCall(method="GET", url=url, headers=headers, json={}))
+        return FakeSyncResponse(should_raise=self._should_raise)
+
+    def post(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, object],
+    ) -> FakeSyncResponse:
+        self._calls.append(
+            RequestCall(method="POST", url=url, headers=headers, json=json)
+        )
+        return FakeSyncResponse(should_raise=self._should_raise)
+
+
 async def _collect_events(
     provider: OpenAIProvider | OpenAICompatibleProvider | AnthropicProvider,
     messages: list[Message],
@@ -105,7 +162,7 @@ async def _collect_events(
     ]
 
 
-def _is_object_list(value: object) -> t.TypeGuard[list[object]]:
+def _is_object_list(value: object) -> TypeGuard[list[object]]:
     """Narrow an arbitrary value to a list of objects."""
     return isinstance(value, list)
 
@@ -199,7 +256,7 @@ class OpenAICompatibleStreamingTests(unittest.TestCase):
         ]
 
         with patch(
-            "src.providers.openai_compatible.httpx.AsyncClient",
+            "src.providers.openai.httpx.AsyncClient",
             return_value=FakeAsyncClient(lines, calls),
         ):
             events = asyncio.run(_collect_events(provider, messages))
@@ -210,6 +267,23 @@ class OpenAICompatibleStreamingTests(unittest.TestCase):
         assert events[1].finish_reason == "length"
         assert len(calls) == 1
         assert calls[0]["url"] == "http://localhost:11434/chat/completions"
+
+    def test_check_model_access_uses_custom_base_url(self) -> None:
+        calls: list[RequestCall] = []
+        provider = OpenAICompatibleProvider(
+            api_key="test-key",
+            base_url="http://localhost:11434/",
+        )
+        with patch(
+            "src.providers.openai.httpx.Client",
+            return_value=FakeSyncClient(calls),
+        ):
+            ok, detail = provider.check_model_access("llama3")
+
+        assert ok is ACCESS_CHECK_OK
+        assert detail is None
+        assert len(calls) == 1
+        assert calls[0]["url"] == "http://localhost:11434/models/llama3"
 
 
 class AnthropicStreamingTests(unittest.TestCase):
@@ -256,6 +330,50 @@ class AnthropicStreamingTests(unittest.TestCase):
         assert events[2].finish_reason == "stop"
         assert len(calls) == 1
         assert calls[0]["url"] == "https://api.anthropic.com/v1/messages"
+
+    def test_check_model_access_success(self) -> None:
+        calls: list[RequestCall] = []
+        provider = AnthropicProvider(api_key="test-key")
+        with patch(
+            "src.providers.anthropic.httpx.Client",
+            return_value=FakeSyncClient(calls),
+        ):
+            ok, detail = provider.check_model_access("claude-3-5-haiku-20241022")
+
+        assert ok is ACCESS_CHECK_OK
+        assert detail is None
+        assert len(calls) == 1
+        assert calls[0]["url"] == "https://api.anthropic.com/v1/messages"
+
+
+class OpenAIAccessibilityTests(unittest.TestCase):
+    """Tests OpenAI model accessibility checks."""
+
+    def test_check_model_access_success(self) -> None:
+        calls: list[RequestCall] = []
+        provider = OpenAIProvider(api_key="test-key")
+        with patch(
+            "src.providers.openai.httpx.Client",
+            return_value=FakeSyncClient(calls),
+        ):
+            ok, detail = provider.check_model_access("gpt-4o-mini")
+
+        assert ok is ACCESS_CHECK_OK
+        assert detail is None
+        assert len(calls) == 1
+        assert calls[0]["url"] == "https://api.openai.com/v1/models/gpt-4o-mini"
+
+    def test_check_model_access_failure(self) -> None:
+        provider = OpenAIProvider(api_key="test-key")
+        with patch(
+            "src.providers.openai.httpx.Client",
+            return_value=FakeSyncClient([], should_raise=True),
+        ):
+            ok, detail = provider.check_model_access("gpt-4o-mini")
+
+        assert ok is False
+        assert isinstance(detail, str)
+        assert ACCESS_CHECK_FAILURE_MESSAGE in detail
 
 
 if __name__ == "__main__":

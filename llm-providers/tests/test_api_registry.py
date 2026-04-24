@@ -1,8 +1,8 @@
 """Unit tests for API registry behavior."""
 
 import sys
-import typing as t
 import unittest
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -22,12 +22,16 @@ class DummyProvider(Provider):
         system_prompt: str,
         messages: list[Message],
         tools: list[Tool],
-    ) -> t.AsyncIterator[AssistantMessageEvent]:
+    ) -> AsyncIterator[AssistantMessageEvent]:
         del model, system_prompt, messages, tools
         return _empty_stream()
 
+    def check_model_access(self, model: str) -> tuple[bool, str | None]:
+        del model
+        return True, None
 
-async def _empty_stream() -> t.AsyncIterator[AssistantMessageEvent]:
+
+async def _empty_stream() -> AsyncIterator[AssistantMessageEvent]:
     if False:
         yield AssistantMessageEvent()
 

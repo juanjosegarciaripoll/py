@@ -1,8 +1,8 @@
 """Type definitions for LLM providers."""
 
-import typing as t
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Literal
 
 type JsonPrimitive = str | int | float | bool | None
 type JsonValue = JsonPrimitive | list["JsonValue"] | dict[str, "JsonValue"]
@@ -17,13 +17,13 @@ class Role(StrEnum):
 
 @dataclass
 class TextContent:
-    type: t.Literal["text"]
+    type: Literal["text"]
     text: str
 
 
 @dataclass
 class ImageContent:
-    type: t.Literal["image"]
+    type: Literal["image"]
     image_url: dict[str, str]
 
 

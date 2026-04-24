@@ -1,7 +1,7 @@
 """OpenAI provider implementation."""
 
 import json
-import typing as t
+from collections.abc import AsyncIterator
 
 import httpx
 
@@ -22,8 +22,11 @@ from ..types import (
 class OpenAIProvider(Provider):
     """OpenAI LLM provider."""
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(
+        self, api_key: str, base_url: str = "https://api.openai.com/v1"
+    ) -> None:
         self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
 
     def _convert_messages(self, messages: list[Message]) -> list[dict[str, object]]:
         """Convert messages to OpenAI format."""
@@ -65,7 +68,7 @@ class OpenAIProvider(Provider):
         system_prompt: str,
         messages: list[Message],
         tools: list[Tool],
-    ) -> t.AsyncIterator[AssistantMessageEvent]:
+    ) -> AsyncIterator[AssistantMessageEvent]:
         """Stream assistant messages from OpenAI."""
         return self._stream_impl(model, system_prompt, messages, tools)
 
@@ -75,7 +78,7 @@ class OpenAIProvider(Provider):
         system_prompt: str,
         messages: list[Message],
         tools: list[Tool],
-    ) -> t.AsyncIterator[AssistantMessageEvent]:
+    ) -> AsyncIterator[AssistantMessageEvent]:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "content-type": "application/json",
@@ -96,7 +99,7 @@ class OpenAIProvider(Provider):
             httpx.AsyncClient() as client,
             client.stream(
                 "POST",
-                "https://api.openai.com/v1/chat/completions",
+                f"{self.base_url}/chat/completions",
                 headers=headers,
                 json=payload,
             ) as response,
@@ -137,6 +140,18 @@ class OpenAIProvider(Provider):
             return AssistantMessageEvent(finish_reason=finish_reason_obj)
 
         return self._parse_usage(payload_dict)
+
+    def check_model_access(self, model: str) -> tuple[bool, str | None]:
+        """Check model availability using provider model endpoint."""
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        url = f"{self.base_url}/models/{model}"
+        try:
+            with httpx.Client() as client:
+                response = client.get(url, headers=headers)
+                response.raise_for_status()
+        except httpx.HTTPError as exc:
+            return False, str(exc)
+        return True, None
 
     def _parse_usage(self, payload_obj: JsonObject) -> AssistantMessageEvent | None:
         usage_obj = payload_obj.get("usage")
