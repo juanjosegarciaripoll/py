@@ -48,7 +48,7 @@ class Message:
 class Tool:
     name: str
     description: str
-    parameters: dict[str, object]
+    parameters: JsonObject
 
 
 @dataclass

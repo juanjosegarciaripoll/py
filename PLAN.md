@@ -25,7 +25,28 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
 6. Add model registry and generated model definitions.
 7. Implement an optional TUI interface to select providers.
 8. Configuration serializable as Python dicts and JSON.
-9. Create unit tests for providers.
+9. Define and implement unified communication message schema parity:
+   assistant/user/tool-result message blocks, tool-call identifiers, timestamps, and error payloads.
+10. Implement full streaming event lifecycle parity:
+    start/delta/end events for text, thinking, and tool calls, plus done/error terminal events.
+11. Implement tool-call communication behavior parity:
+    partial JSON argument streaming, end-of-tool-call normalization, and tool-call ID consistency.
+12. Implement tool-result communication parity:
+    text and image tool-result content routing, provider-specific conversion rules, and compatibility handling.
+13. Implement reasoning/thinking communication parity:
+    unified reasoning interface and provider-specific reasoning/thinking options and replay behavior.
+14. Implement stop-reason and interruption parity:
+    stop/length/tool-use/error/aborted handling and continuation-after-abort semantics.
+15. Implement cross-provider handoff communication parity:
+    transformation of assistant messages (including thinking blocks) between provider formats.
+16. Implement context serialization and replay parity:
+    stable JSON serialization/deserialization of full communication context.
+17. Implement communication robustness parity:
+    partial JSON cleanup, unicode sanitization, overflow detection, and malformed stream recovery.
+18. Implement communication telemetry parity:
+    token usage and response identifiers across providers, with extensible cost accounting hooks.
+19. Implement provider-level model accessibility checks used by interactive configuration flows.
+20. Create comprehensive unit tests for communication semantics and edge cases.
 
 ### Phase 3: Agent Framework (py-agent)
 
@@ -87,10 +108,14 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
 4. Verify LLM provider connections with smoke tests for Anthropic and OpenAI.
 5. Test tool execution with sandboxing policies enabled.
 6. Validate session persistence and compaction with sample sessions.
+7. Validate event-stream compatibility against expected communication lifecycle semantics.
+8. Validate cross-provider handoff and context replay behavior with mixed-provider conversations.
+9. Validate abort/error/overflow communication paths and tool-call/tool-result edge cases.
 
 **Decisions**
 
 - LLM providers: Start with Anthropic, OpenAI, OpenAI-compatible; extensible for others.
+- Provider scope remains limited to current providers for now; parity work focuses on communication behavior.
 - Sandboxing: Permission-based policies on tools, safe bash interpreter.
 - TUI: Use Textual library for Python CLI interface.
 - Exclusions: web-ui, pods, mom packages not implemented.

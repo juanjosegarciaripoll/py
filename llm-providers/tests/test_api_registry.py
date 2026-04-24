@@ -16,6 +16,17 @@ from src.types import AssistantMessageEvent, Message, Tool
 class DummyProvider(Provider):
     """Minimal provider used for registry tests."""
 
+    def convert_tool_message(self, message: Message) -> dict[str, object] | None:
+        del message
+        return None
+
+    def convert_non_tool_message(
+        self,
+        message: Message,
+    ) -> dict[str, object] | None:
+        del message
+        return None
+
     def stream(
         self,
         model: str,

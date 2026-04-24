@@ -21,10 +21,11 @@ from src.types import AssistantMessageEvent, Message, Role, TextContent
 
 OPENAI_EXPECTED_EVENT_COUNT = 3
 OPENAI_EXPECTED_TOTAL_TOKENS = 3
-OPENAI_EXPECTED_REQUEST_MESSAGES = 2
+OPENAI_EXPECTED_REQUEST_MESSAGES = 3
 OPENAI_COMPAT_EXPECTED_EVENT_COUNT = 2
 ANTHROPIC_EXPECTED_EVENT_COUNT = 3
 ANTHROPIC_EXPECTED_TOTAL_TOKENS = 9
+EXPECTED_TOOL_DELTA_EVENT_MINIMUM = 2
 ACCESS_CHECK_OK = True
 ACCESS_CHECK_FAILURE_MESSAGE = "network error"
 
@@ -167,6 +168,13 @@ def _is_object_list(value: object) -> TypeGuard[list[object]]:
     return isinstance(value, list)
 
 
+def _has_tool_call_delta(event: AssistantMessageEvent) -> bool:
+    """Return True when an event carries tool call delta data."""
+    if event.delta is None:
+        return False
+    return event.delta.tool_calls is not None
+
+
 class OpenAIProviderStreamingTests(unittest.TestCase):
     """Tests OpenAI stream parsing via the public stream API."""
 
@@ -201,6 +209,7 @@ class OpenAIProviderStreamingTests(unittest.TestCase):
         tool_message = Message(
             role=Role.TOOL,
             content=[TextContent(type="text", text="tool result")],
+            tool_call_id="call_123",
         )
 
         with patch(
@@ -228,6 +237,10 @@ class OpenAIProviderStreamingTests(unittest.TestCase):
         second_message = payload_messages[1]
         assert isinstance(second_message, dict)
         assert second_message == {"role": "user", "content": "Q"}
+        third_message = payload_messages[2]
+        assert isinstance(third_message, dict)
+        assert third_message["role"] == "tool"
+        assert third_message["tool_call_id"] == "call_123"
 
 
 class OpenAICompatibleStreamingTests(unittest.TestCase):
@@ -345,6 +358,74 @@ class AnthropicStreamingTests(unittest.TestCase):
         assert len(calls) == 1
         assert calls[0]["url"] == "https://api.anthropic.com/v1/messages"
 
+    def test_stream_emits_tool_call_delta_and_tool_use_finish_reason(self) -> None:
+        calls: list[RequestCall] = []
+        lines = [
+            "data: "
+            + json.dumps(
+                {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {
+                        "type": "tool_use",
+                        "id": "toolu_01",
+                        "name": "weather",
+                        "input": {},
+                    },
+                }
+            ),
+            "data: "
+            + json.dumps(
+                {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "input_json_delta", "partial_json": '{"city":"'},
+                }
+            ),
+            "data: "
+            + json.dumps(
+                {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "input_json_delta", "partial_json": 'Madrid"}'},
+                }
+            ),
+            "data: " + json.dumps({"type": "content_block_stop", "index": 0}),
+            "data: "
+            + json.dumps(
+                {
+                    "type": "message_delta",
+                    "delta": {"stop_reason": "tool_use"},
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                }
+            ),
+        ]
+        provider = AnthropicProvider(api_key="test-key")
+        messages = [
+            Message(
+                role=Role.USER,
+                content=[TextContent(type="text", text="Q")],
+            )
+        ]
+
+        with patch(
+            "src.providers.anthropic.httpx.AsyncClient",
+            return_value=FakeAsyncClient(lines, calls),
+        ):
+            events = asyncio.run(_collect_events(provider, messages))
+
+        tool_events = [event for event in events if _has_tool_call_delta(event)]
+        assert len(tool_events) >= EXPECTED_TOOL_DELTA_EVENT_MINIMUM
+        final_delta = tool_events[-1].delta
+        assert final_delta is not None
+        assert final_delta.tool_calls is not None
+        final_tool_call = final_delta.tool_calls[0]
+        assert final_tool_call.id == "toolu_01"
+        assert final_tool_call.function["name"] == "weather"
+        assert final_tool_call.function["arguments"] == '{"city":"Madrid"}'
+        finish_events = [event for event in events if event.finish_reason is not None]
+        assert finish_events[-1].finish_reason == "toolUse"
+
 
 class OpenAIAccessibilityTests(unittest.TestCase):
     """Tests OpenAI model accessibility checks."""
@@ -374,6 +455,81 @@ class OpenAIAccessibilityTests(unittest.TestCase):
         assert ok is False
         assert isinstance(detail, str)
         assert ACCESS_CHECK_FAILURE_MESSAGE in detail
+
+
+class OpenAIToolCallParsingTests(unittest.TestCase):
+    """Tests OpenAI tool call delta parsing and finish reason normalization."""
+
+    def test_stream_parses_tool_call_deltas(self) -> None:
+        calls: list[RequestCall] = []
+        lines = [
+            "data: "
+            + json.dumps(
+                {
+                    "choices": [
+                        {
+                            "delta": {
+                                "tool_calls": [
+                                    {
+                                        "index": 0,
+                                        "id": "call_abc",
+                                        "function": {
+                                            "name": "search",
+                                            "arguments": '{"q":"',
+                                        },
+                                    }
+                                ]
+                            },
+                            "finish_reason": None,
+                        }
+                    ]
+                }
+            ),
+            "data: "
+            + json.dumps(
+                {
+                    "choices": [
+                        {
+                            "delta": {
+                                "tool_calls": [
+                                    {
+                                        "index": 0,
+                                        "function": {"arguments": 'test"}'},
+                                    }
+                                ]
+                            },
+                            "finish_reason": "tool_calls",
+                        }
+                    ]
+                }
+            ),
+        ]
+        provider = OpenAIProvider(api_key="test-key")
+        messages = [
+            Message(
+                role=Role.USER,
+                content=[TextContent(type="text", text="Q")],
+            )
+        ]
+
+        with patch(
+            "src.providers.openai.httpx.AsyncClient",
+            return_value=FakeAsyncClient(lines, calls),
+        ):
+            events = asyncio.run(_collect_events(provider, messages))
+
+        delta_events = [event for event in events if _has_tool_call_delta(event)]
+        assert len(delta_events) == EXPECTED_TOOL_DELTA_EVENT_MINIMUM
+        last_delta = delta_events[-1].delta
+        assert last_delta is not None
+        assert last_delta.tool_calls is not None
+        last_tool_call = last_delta.tool_calls[0]
+        assert last_tool_call.id == "call_abc"
+        assert last_tool_call.function["name"] == "search"
+        assert last_tool_call.function["arguments"] == '{"q":"test"}'
+        finish_events = [event for event in events if event.finish_reason]
+        assert len(finish_events) == 1
+        assert finish_events[0].finish_reason == "toolUse"
 
 
 if __name__ == "__main__":

@@ -11,25 +11,40 @@ It provides a shared provider interface, common message/tool types, and concrete
 
 ## Package Layout
 
-- `src/types.py`: Shared dataclasses and JSON typing aliases used by providers.
-- `src/provider.py`: Abstract `Provider` interface.
+- `src/types.py`: Provider stream-facing dataclasses and JSON typing aliases.
+- `src/communication.py`: Unified communication schema (Pydantic models), event stream protocol, serialization, handoff/normalization utilities.
+- `src/provider.py`: Single abstract `Provider` base class with message-conversion dispatch hooks.
 - `src/api_registry.py`: Provider registry and API-key helper.
-- `src/models.py`: Static model metadata registry.
-- `src/providers/anthropic.py`: Anthropic streaming implementation.
-- `src/providers/openai.py`: OpenAI chat-completions streaming implementation.
-- `src/providers/openai_compatible.py`: OpenAI-compatible streaming implementation (custom base URL).
+- `src/auth.py`: API key store + OAuth token models/store.
+- `src/config.py`: Pydantic provider configuration models.
+- `src/model_registry.py`, `src/generated_models.py`, `src/models.py`: Model metadata registry.
+- `src/tui.py`: Interactive provider configuration helper.
+- `src/providers/anthropic.py`: Anthropic streaming + message/tool conversion.
+- `src/providers/openai.py`: OpenAI chat-completions streaming + message/tool conversion.
+- `src/providers/openai_compatible.py`: OpenAI-compatible provider (inherits OpenAI behavior, custom base URL).
 
-## Core Interface
+## Core Interfaces
+
+### Provider API
 
 All providers implement:
 
 - `Provider.stream(model, system_prompt, messages, tools) -> AsyncIterator[AssistantMessageEvent]`
+- `Provider.check_model_access(model) -> tuple[bool, str | None]`
 
-Streaming yields `AssistantMessageEvent` values containing:
+Message conversion is standardized in the same base class:
 
-- `delta`: partial assistant message content
-- `usage`: token usage information (when available)
-- `finish_reason`: stream completion reason (when available)
+- `Provider.convert_messages(messages) -> list[dict[str, object]]`
+- `Provider.convert_message(message) -> dict[str, object] | None` (default role-dispatch)
+- `Provider.convert_tool_message(...)` and `Provider.convert_non_tool_message(...)` (provider-specific hooks)
+
+### Communication API
+
+`src/communication.py` defines unified multi-provider message/event models:
+
+- Messages: `UserMessage`, `AssistantMessage`, `ToolResultMessage`, `Context`
+- Events: `start`, `text_*`, `thinking_*`, `toolcall_*`, `done`, `error`
+- Helpers: streaming JSON repair/parsing, tool-call ID normalization, context overflow detection, cross-provider handoff transformation
 
 ## Basic Usage
 
@@ -57,12 +72,14 @@ async for event in provider.stream(
 From the repository root:
 
 ```bash
-uv run ruff check .
-uv run basedpyright .
-uv run mypy .
+uv run --no-cache ruff check llm-providers
+uv run --no-cache basedpyright llm-providers
+uv run --no-cache mypy llm-providers
+uv run --no-cache python -m unittest discover -s llm-providers/tests -v
 ```
 
 ## Notes
 
-- Current implementations prioritize text streaming; image/tool-result conversion is intentionally minimal and can be expanded in later phases.
-- Unit test scaffolding exists, but provider behavior tests should be expanded as implementation evolves.
+- Current built-in providers are Anthropic, OpenAI, and OpenAI-compatible.
+- `Provider` conversion hooks are intended to keep vendor-specific payload differences localized.
+- Tests focus on public APIs and include provider streaming, conversion behavior, config/auth, registry, and communication helper coverage.
