@@ -1,0 +1,30 @@
+[project]
+name = "py"
+version = "0.1.0"
+description = "Py agentic coding framework"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.uv.workspace]
+members = ["llm-providers", "py-agent", "py-coding-agent"]
+
+[dependency-groups]
+dev = ["ruff", "basedpyright", "mypy", "httpx"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "C90", "I", "N", "UP", "YTT", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "T10", "DJ", "EM", "EXE", "FA", "ISC", "ICN", "G", "INP", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SLOT", "SIM", "TID", "TCH", "INT", "ARG", "PTH", "ERA", "PD", "PGH", "PL", "TRY", "FLY", "NPY", "AIR", "PERF", "FURB", "LOG", "RUF"]
+ignore = ["S101", "COM812", "ISC001", "TID252"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+explicit_package_bases = true
+
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"

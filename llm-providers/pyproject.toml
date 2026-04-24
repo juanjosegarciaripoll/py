@@ -1,0 +1,11 @@
+[project]
+name = "llm-providers"
+version = "0.1.0"
+description = "LLM providers library"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = ["httpx"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

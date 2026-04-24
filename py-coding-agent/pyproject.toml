@@ -1,0 +1,11 @@
+[project]
+name = "py-coding-agent"
+version = "0.1.0"
+description = "CLI coding agent"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
