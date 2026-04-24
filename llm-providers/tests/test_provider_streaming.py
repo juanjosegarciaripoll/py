@@ -150,9 +150,7 @@ class OpenAIProviderStreamingTests(unittest.TestCase):
             "src.providers.openai.httpx.AsyncClient",
             return_value=FakeAsyncClient(lines, calls),
         ):
-            events = asyncio.run(
-                _collect_events(provider, [messages[0], tool_message])
-            )
+            events = asyncio.run(_collect_events(provider, [messages[0], tool_message]))
 
         assert len(events) == OPENAI_EXPECTED_EVENT_COUNT
         assert events[0].delta is not None

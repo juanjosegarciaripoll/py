@@ -92,12 +92,15 @@ class OpenAIProvider(Provider):
         if tools:
             payload["tools"] = self._convert_tools(tools)
 
-        async with httpx.AsyncClient() as client, client.stream(
-            "POST",
-            "https://api.openai.com/v1/chat/completions",
-            headers=headers,
-            json=payload,
-        ) as response:
+        async with (
+            httpx.AsyncClient() as client,
+            client.stream(
+                "POST",
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=payload,
+            ) as response,
+        ):
             response.raise_for_status()
             async for line in response.aiter_lines():
                 if not line.startswith("data: ") or line == "data: [DONE]":

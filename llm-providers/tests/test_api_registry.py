@@ -1,15 +1,14 @@
 """Unit tests for API registry behavior."""
 
-import os
 import sys
 import typing as t
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.api_registry import ApiRegistry, get_api_key
+from src.auth import ApiKeyStore
 from src.provider import Provider
 from src.types import AssistantMessageEvent, Message, Tool
 
@@ -48,19 +47,42 @@ class ApiRegistryTests(unittest.TestCase):
         registry.register("b", DummyProvider())
         assert registry.list_providers() == ["a", "b"]
 
+    def test_get_provider_missing_raises(self) -> None:
+        registry = ApiRegistry()
+        try:
+            registry.get_provider("missing")
+        except KeyError:
+            pass
+        else:
+            msg = "Expected KeyError for missing provider"
+            raise AssertionError(msg)
+
+    def test_empty_provider_name_raises(self) -> None:
+        registry = ApiRegistry()
+        try:
+            registry.register("", DummyProvider())
+        except ValueError:
+            pass
+        else:
+            msg = "Expected ValueError for empty provider name"
+            raise AssertionError(msg)
+
     def test_get_api_key_success(self) -> None:
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "secret"}, clear=False):
-            assert get_api_key("openai") == "secret"
+        assert get_api_key("openai", env={"OPENAI_API_KEY": "secret"}) == "secret"
 
     def test_get_api_key_missing_raises(self) -> None:
-        with patch.dict(os.environ, {}, clear=True):
-            try:
-                get_api_key("anthropic")
-            except ValueError:
-                pass
-            else:
-                msg = "Expected ValueError when API key is missing"
-                raise AssertionError(msg)
+        try:
+            get_api_key("anthropic", env={})
+        except ValueError:
+            pass
+        else:
+            msg = "Expected ValueError when key is missing"
+            raise AssertionError(msg)
+
+    def test_registry_uses_custom_store(self) -> None:
+        store = ApiKeyStore(overrides={"openai": "token"})
+        registry = ApiRegistry(api_key_store=store)
+        assert registry.get_api_key("openai") == "token"
 
 
 if __name__ == "__main__":

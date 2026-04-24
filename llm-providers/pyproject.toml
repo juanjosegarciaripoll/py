@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "LLM providers library"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = ["httpx"]
+dependencies = ["httpx", "pydantic>=2.0,<3.0"]
 
 [build-system]
 requires = ["hatchling"]

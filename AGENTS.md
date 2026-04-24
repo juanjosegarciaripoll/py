@@ -12,6 +12,7 @@ This project aims to recreate the Pi agentic framework using standard Python lib
 
 - The software is fully developed in Python 3.13
 - Minimal dependencies, with a focus on standard libraries
+- Pydantic is allowed when it clearly simplifies data parsing, validation, and serialization
 - Libraries and software handled using "uv"
 - Python programs are invoked using "uv run"
 - Unit testing with Python unittests (not pytest)
