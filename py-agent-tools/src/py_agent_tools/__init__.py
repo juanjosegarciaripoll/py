@@ -15,6 +15,13 @@ from .shell_parser import (
     ShlexTokenizer,
     parse_shell_command,
 )
+from .shell_registry import (
+    ShellCommandContext,
+    ShellCommandHandler,
+    ShellCommandRegistry,
+    ShellCommandResult,
+    ShellRegistryError,
+)
 from .shell_runtime import (
     ShellCancellationToken,
     ShellEventSink,
@@ -41,6 +48,10 @@ __all__ = [
     "BuiltinToolExecutor",
     "GrepMatch",
     "ShellCancellationToken",
+    "ShellCommandContext",
+    "ShellCommandHandler",
+    "ShellCommandRegistry",
+    "ShellCommandResult",
     "ShellEnvAssignment",
     "ShellEventSink",
     "ShellExecutionCancelledError",
@@ -52,6 +63,7 @@ __all__ = [
     "ShellPipeline",
     "ShellProgram",
     "ShellRedirection",
+    "ShellRegistryError",
     "ShellSimpleCommand",
     "ShellSubsetError",
     "ShellSubsetFeatures",
