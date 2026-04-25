@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, TextIO, cast
 
+from .config import AppConfig, load_config
 from .session import SessionStore
 
 type ExecutionMode = Literal["interactive", "print", "json", "rpc"]
@@ -35,15 +36,22 @@ class RunConfig:
     prompt: str
     session_file: str | None
     branch: str
+    config_file: str | None
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(*, defaults: AppConfig | None = None) -> argparse.ArgumentParser:
     """Build the command-line argument parser."""
+    config_defaults = defaults or AppConfig()
     parser = argparse.ArgumentParser(prog="py-coding-agent")
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Optional TOML config file path",
+    )
     parser.add_argument(
         "--mode",
         choices=["interactive", "print", "json", "rpc"],
-        default="interactive",
+        default=config_defaults.mode,
         help="Execution mode",
     )
     parser.add_argument(
@@ -54,12 +62,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--session-file",
-        default=None,
+        default=config_defaults.session_file,
         help="Optional JSONL session file path",
     )
     parser.add_argument(
         "--branch",
-        default="main",
+        default=config_defaults.branch,
         help="Session branch name",
     )
     return parser
@@ -67,16 +75,27 @@ def build_parser() -> argparse.ArgumentParser:
 
 def parse_args(argv: list[str] | None = None) -> RunConfig:
     """Parse command-line arguments into a typed RunConfig."""
-    namespace = build_parser().parse_args(argv)
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--config", default=None)
+    pre_namespace, _unknown = pre_parser.parse_known_args(argv)
+    config_path = (
+        None
+        if pre_namespace.config is None
+        else Path(str(pre_namespace.config))
+    )
+    defaults = load_config(config_path)
+    namespace = build_parser(defaults=defaults).parse_args(argv)
     mode: ExecutionMode = namespace.mode
     prompt: str = namespace.prompt
     session_file = namespace.session_file
     branch: str = namespace.branch
+    config_file = namespace.config
     return RunConfig(
         mode=mode,
         prompt=prompt,
         session_file=session_file,
         branch=branch,
+        config_file=config_file,
     )
 
 

@@ -35,6 +35,7 @@ class CliTests(unittest.TestCase):
         assert config.prompt == "hello"
         assert config.session_file is None
         assert config.branch == "main"
+        assert config.config_file is None
 
     def test_parse_args_with_session_options(self) -> None:
         config = parse_args(
@@ -52,6 +53,42 @@ class CliTests(unittest.TestCase):
         assert config.prompt == "hello"
         assert config.session_file == "tmp/session.jsonl"
         assert config.branch == "feature-x"
+        assert config.config_file is None
+
+    def test_parse_args_uses_config_defaults_and_cli_overrides(self) -> None:
+        test_dir = TMP_DIR / "cli-config"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        config_path = test_dir / "agent.toml"
+        config_path.write_text(
+            "[agent]\nmode='json'\nbranch='feature-a'\nsession_file='saved.jsonl'\n",
+            encoding="utf-8",
+        )
+        try:
+            loaded = parse_args(["--config", str(config_path), "prompt-a"])
+            assert loaded.mode == "json"
+            assert loaded.branch == "feature-a"
+            assert loaded.session_file == "saved.jsonl"
+            assert loaded.config_file == str(config_path)
+
+            overridden = parse_args(
+                [
+                    "--config",
+                    str(config_path),
+                    "--mode",
+                    "print",
+                    "--branch",
+                    "hotfix",
+                    "--session-file",
+                    "override.jsonl",
+                    "prompt-b",
+                ]
+            )
+            assert overridden.mode == "print"
+            assert overridden.branch == "hotfix"
+            assert overridden.session_file == "override.jsonl"
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
 
     def test_parse_args_rejects_invalid_mode(self) -> None:
         error: BaseException | None = None
@@ -66,7 +103,13 @@ class CliTests(unittest.TestCase):
         app = CodingAgentApp()
         stdout = io.StringIO()
         exit_code = app.run(
-            RunConfig(mode="print", prompt="hello", session_file=None, branch="main"),
+            RunConfig(
+                mode="print",
+                prompt="hello",
+                session_file=None,
+                branch="main",
+                config_file=None,
+            ),
             stdin=io.StringIO(),
             stdout=stdout,
         )
@@ -77,7 +120,13 @@ class CliTests(unittest.TestCase):
         app = CodingAgentApp()
         stdout = io.StringIO()
         exit_code = app.run(
-            RunConfig(mode="json", prompt="hello", session_file=None, branch="main"),
+            RunConfig(
+                mode="json",
+                prompt="hello",
+                session_file=None,
+                branch="main",
+                config_file=None,
+            ),
             stdin=io.StringIO(),
             stdout=stdout,
         )
@@ -97,6 +146,7 @@ class CliTests(unittest.TestCase):
                 prompt="",
                 session_file=None,
                 branch="main",
+                config_file=None,
             ),
             stdin=stdin,
             stdout=stdout,
@@ -115,6 +165,7 @@ class CliTests(unittest.TestCase):
                 prompt="",
                 session_file=None,
                 branch="main",
+                config_file=None,
             ),
             stdin=io.StringIO(""),
             stdout=stdout,
@@ -132,7 +183,13 @@ class CliTests(unittest.TestCase):
         stdin = io.StringIO(json.dumps(request) + "\n" + '{"method":"shutdown"}\n')
         stdout = io.StringIO()
         exit_code = app.run(
-            RunConfig(mode="rpc", prompt="", session_file=None, branch="main"),
+            RunConfig(
+                mode="rpc",
+                prompt="",
+                session_file=None,
+                branch="main",
+                config_file=None,
+            ),
             stdin=stdin,
             stdout=stdout,
         )
@@ -156,7 +213,13 @@ class CliTests(unittest.TestCase):
         )
         stdout = io.StringIO()
         exit_code = app.run(
-            RunConfig(mode="rpc", prompt="", session_file=None, branch="main"),
+            RunConfig(
+                mode="rpc",
+                prompt="",
+                session_file=None,
+                branch="main",
+                config_file=None,
+            ),
             stdin=stdin,
             stdout=stdout,
         )
@@ -187,6 +250,7 @@ class CliTests(unittest.TestCase):
                         prompt="hello",
                         session_file=str(session_path),
                         branch="feature-x",
+                        config_file=None,
                     ),
                     stdin=io.StringIO(),
                     stdout=stdout,
