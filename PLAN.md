@@ -95,7 +95,6 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
      Deferred to future phase items (depends on not-yet-implemented capabilities, especially tools and full agent runtime integration):
    - File-operation extraction from tool calls (`read/write/edit`) and cumulative `<read-files>/<modified-files>` tracking.
    - Overflow-error recovery compaction + automatic retry loop integration.
-   - Extension interception parity (`session_before_compact`) with custom compaction override/cancel behavior.
    - Split-turn handling and turn-prefix summarization for oversized single turns.
    - LLM-driven summarization and thinking-level parity for compaction requests.
 5. Add extension system with hooks and event-driven architecture. Initial event bus and interaction hooks implemented.

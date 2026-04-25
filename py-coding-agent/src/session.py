@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
-from .compaction import CompactionSettings, compact_records
+from .compaction import CompactionResult, CompactionSettings, compact_records
 
 type JsonObject = dict[str, object]
 
@@ -207,14 +207,33 @@ class SessionStore:
         settings: CompactionSettings,
     ) -> CompactionRecord | None:
         """Run compaction when configured thresholds are crossed."""
-        interactions = self.load()
-        result = compact_records(
-            records=interactions,
+        result = self.plan_compaction(
             context_window_tokens=context_window_tokens,
             settings=settings,
         )
         if result is None:
             return None
+        return self.append_compaction_from_result(result)
+
+    def plan_compaction(
+        self,
+        *,
+        context_window_tokens: int,
+        settings: CompactionSettings,
+    ) -> CompactionResult | None:
+        """Calculate a compaction candidate without persisting it."""
+        interactions = self.load()
+        return compact_records(
+            records=interactions,
+            context_window_tokens=context_window_tokens,
+            settings=settings,
+        )
+
+    def append_compaction_from_result(
+        self,
+        result: CompactionResult,
+    ) -> CompactionRecord:
+        """Persist one computed compaction result."""
         return self.append_compaction(
             summary=result.summary,
             first_kept_id=result.first_kept_id,

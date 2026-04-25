@@ -11,7 +11,13 @@ from typing import TYPE_CHECKING, Literal, TextIO, cast
 
 from .compaction import CompactionSettings
 from .config import AppConfig, load_config
-from .extensions import AppEvent, EventBus, EventListener
+from .extensions import (
+    AppEvent,
+    EventBus,
+    EventListener,
+    SessionBeforeCompactContext,
+    SessionBeforeCompactHook,
+)
 from .session import CompactionRecord, SessionStore, timestamp_ms
 from .tools import (
     BashResult,
@@ -155,6 +161,13 @@ class CodingAgentApp:
     def subscribe(self, listener: EventListener) -> Callable[[], None]:
         """Subscribe to app events and return an unsubscribe callback."""
         return self._event_bus.subscribe(listener)
+
+    def subscribe_session_before_compact(
+        self,
+        hook: SessionBeforeCompactHook,
+    ) -> Callable[[], None]:
+        """Subscribe to `session_before_compact` compaction hooks."""
+        return self._event_bus.subscribe_session_before_compact(hook)
 
     def respond(self, prompt: str) -> str:
         """Produce a deterministic response for the current prompt."""
@@ -482,9 +495,9 @@ class CodingAgentApp:
             prompt=payload.prompt,
             response=payload.response,
         )
-        compaction = store.compact_if_needed(
-            context_window_tokens=persistence.context_window_tokens,
-            settings=persistence.compaction_settings,
+        compaction = self._compact_with_extensions(
+            store=store,
+            persistence=persistence,
         )
         if compaction is None:
             return
@@ -492,6 +505,61 @@ class CodingAgentApp:
             branch=persistence.branch,
             session_file=persistence.session_file,
             compaction=compaction,
+        )
+
+    def _compact_with_extensions(
+        self,
+        *,
+        store: SessionStore,
+        persistence: _PersistenceContext,
+    ) -> CompactionRecord | None:
+        planned = store.plan_compaction(
+            context_window_tokens=persistence.context_window_tokens,
+            settings=persistence.compaction_settings,
+        )
+        if planned is None:
+            return None
+
+        context = SessionBeforeCompactContext(
+            branch=persistence.branch,
+            session_file=persistence.session_file,
+            context_window_tokens=persistence.context_window_tokens,
+            settings=persistence.compaction_settings,
+            interactions_count=len(store.load()),
+            proposed_summary=planned.summary,
+            proposed_first_kept_id=planned.first_kept_id,
+            proposed_tokens_before=planned.tokens_before,
+            proposed_tokens_after=planned.tokens_after,
+        )
+        decision = self._event_bus.run_session_before_compact(context)
+        if decision is not None and decision.cancel:
+            return None
+
+        summary = (
+            planned.summary
+            if decision is None or decision.summary is None
+            else decision.summary
+        )
+        first_kept_id = (
+            planned.first_kept_id
+            if decision is None or decision.first_kept_id is None
+            else decision.first_kept_id
+        )
+        tokens_before = (
+            planned.tokens_before
+            if decision is None or decision.tokens_before is None
+            else decision.tokens_before
+        )
+        tokens_after = (
+            planned.tokens_after
+            if decision is None or decision.tokens_after is None
+            else decision.tokens_after
+        )
+        return store.append_compaction(
+            summary=summary,
+            first_kept_id=first_kept_id,
+            tokens_before=tokens_before,
+            tokens_after=tokens_after,
         )
 
     def _emit_compaction_event(

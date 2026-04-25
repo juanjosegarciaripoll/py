@@ -16,7 +16,14 @@ from .config import (
     local_config_path,
     resolve_config_path,
 )
-from .extensions import AppEvent, EventBus, EventListener
+from .extensions import (
+    AppEvent,
+    EventBus,
+    EventListener,
+    SessionBeforeCompactContext,
+    SessionBeforeCompactDecision,
+    SessionBeforeCompactHook,
+)
 from .session import CompactionRecord, SessionRecord, SessionStore
 from .skills import (
     SkillDatabase,
@@ -48,6 +55,9 @@ __all__ = [
     "ExecutionMode",
     "GrepMatch",
     "RunConfig",
+    "SessionBeforeCompactContext",
+    "SessionBeforeCompactDecision",
+    "SessionBeforeCompactHook",
     "SessionRecord",
     "SessionStore",
     "SkillDatabase",

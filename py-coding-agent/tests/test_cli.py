@@ -14,15 +14,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src import session
 from src.cli import CodingAgentApp, RunConfig, build_parser, main, parse_args
+from src.extensions import SessionBeforeCompactDecision
 
 if TYPE_CHECKING:
-    from src.extensions import AppEvent
+    from src.extensions import AppEvent, SessionBeforeCompactContext
 
 ARGPARSE_ERROR_EXIT_CODE = 2
 TMP_DIR = Path(__file__).resolve().parent / ".tmp"
 DEFAULT_CONTEXT_WINDOW_TOKENS = 272_000
 DEFAULT_RESERVE_TOKENS = 16_384
 DEFAULT_KEEP_RECENT_TOKENS = 20_000
+COMPACTION_OVERRIDE_TOKENS_AFTER = 77
 
 
 class CliTests(unittest.TestCase):
@@ -556,6 +558,95 @@ class CliTests(unittest.TestCase):
         assert compacted
         assert compacted[-1].tokens_before is not None
         assert compacted[-1].tokens_after is not None
+
+    def test_session_before_compact_hook_can_cancel_compaction(self) -> None:
+        app = CodingAgentApp()
+        test_dir = TMP_DIR / "cli-compaction-cancel"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        session_path = test_dir / "session.jsonl"
+        try:
+            seen: list[AppEvent] = []
+
+            def listener(event: AppEvent) -> None:
+                seen.append(event)
+
+            def cancel_hook(
+                _context: SessionBeforeCompactContext,
+            ) -> SessionBeforeCompactDecision:
+                return SessionBeforeCompactDecision(cancel=True)
+
+            app.subscribe(listener)
+            app.subscribe_session_before_compact(cancel_hook)
+            for index in range(4):
+                app.run(
+                    RunConfig(
+                        mode="print",
+                        prompt=f"compact-{index} " + ("x" * 120),
+                        session_file=str(session_path),
+                        branch="main",
+                        config_file=None,
+                        context_window_tokens=200,
+                        compaction_enabled=True,
+                        compaction_reserve_tokens=40,
+                        compaction_keep_recent_tokens=40,
+                    ),
+                    stdin=io.StringIO(),
+                    stdout=io.StringIO(),
+                )
+            entries = session_path.read_text(encoding="utf-8").splitlines()
+            payloads = [cast("dict[str, object]", json.loads(line)) for line in entries]
+            assert all(payload.get("type") == "interaction" for payload in payloads)
+            assert all(event.type != "session_compacted" for event in seen)
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_session_before_compact_hook_can_override_summary(self) -> None:
+        app = CodingAgentApp()
+        test_dir = TMP_DIR / "cli-compaction-override"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        session_path = test_dir / "session.jsonl"
+        try:
+            def override_hook(
+                context: SessionBeforeCompactContext,
+            ) -> SessionBeforeCompactDecision:
+                return SessionBeforeCompactDecision(
+                    summary="Manual checkpoint",
+                    first_kept_id=context.proposed_first_kept_id,
+                    tokens_after=COMPACTION_OVERRIDE_TOKENS_AFTER,
+                )
+
+            app.subscribe_session_before_compact(override_hook)
+            for index in range(4):
+                app.run(
+                    RunConfig(
+                        mode="print",
+                        prompt=f"compact-{index} " + ("x" * 120),
+                        session_file=str(session_path),
+                        branch="main",
+                        config_file=None,
+                        context_window_tokens=200,
+                        compaction_enabled=True,
+                        compaction_reserve_tokens=40,
+                        compaction_keep_recent_tokens=40,
+                    ),
+                    stdin=io.StringIO(),
+                    stdout=io.StringIO(),
+                )
+            entries = session_path.read_text(encoding="utf-8").splitlines()
+            payloads = [cast("dict[str, object]", json.loads(line)) for line in entries]
+            compactions = [
+                payload
+                for payload in payloads
+                if payload.get("type") == "compaction"
+            ]
+            assert compactions
+            latest = compactions[-1]
+            assert latest["summary"] == "Manual checkpoint"
+            assert latest["tokens_after"] == COMPACTION_OVERRIDE_TOKENS_AFTER
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import unittest
 
-from src.extensions import AppEvent, EventBus
+from src.compaction import CompactionSettings
+from src.extensions import (
+    AppEvent,
+    EventBus,
+    SessionBeforeCompactContext,
+    SessionBeforeCompactDecision,
+)
 
 
 class ExtensionTests(unittest.TestCase):
@@ -41,6 +47,49 @@ class ExtensionTests(unittest.TestCase):
             "second:print",
             "second:print",
         ]
+
+    def test_before_compact_hooks_support_override_and_cancel(self) -> None:
+        bus = EventBus()
+        calls: list[str] = []
+        context = SessionBeforeCompactContext(
+            branch="main",
+            session_file="session.jsonl",
+            context_window_tokens=1000,
+            settings=CompactionSettings(),
+            interactions_count=7,
+            proposed_summary="generated",
+            proposed_first_kept_id="abc123",
+            proposed_tokens_before=900,
+            proposed_tokens_after=400,
+        )
+
+        def override(
+            _context: SessionBeforeCompactContext,
+        ) -> SessionBeforeCompactDecision:
+            calls.append("override")
+            return SessionBeforeCompactDecision(summary="custom-summary")
+
+        def cancel(
+            _context: SessionBeforeCompactContext,
+        ) -> SessionBeforeCompactDecision:
+            calls.append("cancel")
+            return SessionBeforeCompactDecision(cancel=True)
+
+        bus.subscribe_session_before_compact(override)
+        unsubscribe_cancel = bus.subscribe_session_before_compact(cancel)
+
+        canceled = bus.run_session_before_compact(context)
+        assert canceled is not None
+        assert canceled.cancel is True
+        assert calls == ["override", "cancel"]
+
+        calls.clear()
+        unsubscribe_cancel()
+        overridden = bus.run_session_before_compact(context)
+        assert overridden is not None
+        assert overridden.cancel is False
+        assert overridden.summary == "custom-summary"
+        assert calls == ["override"]
 
 
 if __name__ == "__main__":
