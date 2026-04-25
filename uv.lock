@@ -11,6 +11,7 @@ members = [
     "llm-providers",
     "py",
     "py-agent",
+    "py-agent-tools",
     "py-coding-agent",
 ]
 
@@ -398,15 +399,24 @@ version = "0.1.0"
 source = { editable = "py-agent" }
 
 [[package]]
+name = "py-agent-tools"
+version = "0.1.0"
+source = { editable = "py-agent-tools" }
+
+[[package]]
 name = "py-coding-agent"
 version = "0.1.0"
 source = { editable = "py-coding-agent" }
 dependencies = [
+    { name = "py-agent-tools" },
     { name = "textual" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "textual", specifier = ">=0.80,<1.0" }]
+requires-dist = [
+    { name = "py-agent-tools", editable = "py-agent-tools" },
+    { name = "textual", specifier = ">=0.80,<1.0" },
+]
 
 [[package]]
 name = "pydantic"

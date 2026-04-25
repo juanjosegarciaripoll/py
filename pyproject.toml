@@ -7,7 +7,7 @@ requires-python = ">=3.13"
 dependencies = []
 
 [tool.uv.workspace]
-members = ["llm-providers", "py-agent", "py-coding-agent"]
+members = ["llm-providers", "py-agent", "py-agent-tools", "py-coding-agent"]
 
 [dependency-groups]
 dev = ["ruff", "basedpyright", "mypy", "coverage[toml]>=7.0", "httpx", "pydantic>=2.0,<3.0"]
@@ -15,7 +15,7 @@ dev = ["ruff", "basedpyright", "mypy", "coverage[toml]>=7.0", "httpx", "pydantic
 [tool.ruff]
 line-length = 88
 target-version = "py313"
-extend-exclude = ["py-coding-agent/tests/.tmp"]
+extend-exclude = ["py-agent-tools/tests/.tmp", "py-coding-agent/tests/.tmp"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "C90", "I", "N", "UP", "YTT", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "T10", "DJ", "EM", "EXE", "FA", "ISC", "ICN", "G", "INP", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SLOT", "SIM", "TID", "TCH", "INT", "ARG", "PTH", "ERA", "PD", "PGH", "PL", "TRY", "FLY", "NPY", "AIR", "PERF", "FURB", "LOG", "RUF"]
@@ -25,12 +25,14 @@ ignore = ["S101", "COM812", "ISC001", "TID252"]
 python_version = "3.13"
 strict = true
 explicit_package_bases = true
+mypy_path = ["py-agent-tools/src"]
 
 [tool.pyright]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
+extraPaths = ["py-agent-tools/src"]
 
 [tool.coverage.run]
-omit = ["py-coding-agent/tests/.tmp/*"]
+omit = ["py-agent-tools/tests/.tmp/*", "py-coding-agent/tests/.tmp/*"]
