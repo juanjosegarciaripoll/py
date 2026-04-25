@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Literal
 
 type ToolName = Literal["read", "write", "edit", "bash", "find", "grep"]
+type PermissionName = Literal["read", "write", "execute"]
 
 
 class ToolError(Exception):
@@ -85,6 +86,47 @@ class ToolPermissionError(ToolError):
 
 
 @dataclass(slots=True, frozen=True)
+class ToolPermissionPolicy:
+    """Read/write/execute permission policy for tool operations."""
+
+    allow_read: bool = True
+    allow_write: bool = True
+    allow_execute: bool = True
+
+    @classmethod
+    def allow_all(cls) -> ToolPermissionPolicy:
+        """Create policy allowing all operations."""
+        return cls()
+
+    @classmethod
+    def deny_all(cls) -> ToolPermissionPolicy:
+        """Create policy denying all operations."""
+        return cls(allow_read=False, allow_write=False, allow_execute=False)
+
+    def is_allowed(self, permission: PermissionName) -> bool:
+        """Return whether a permission is enabled."""
+        match permission:
+            case "read":
+                return self.allow_read
+            case "write":
+                return self.allow_write
+            case "execute":
+                return self.allow_execute
+
+    def ensure_allowed(self, permission: PermissionName) -> None:
+        """Raise if requested permission is denied."""
+        if self.is_allowed(permission):
+            return
+        match permission:
+            case "read":
+                raise ToolPermissionError.read_disabled()
+            case "write":
+                raise ToolPermissionError.write_disabled()
+            case "execute":
+                raise ToolPermissionError.execute_disabled()
+
+
+@dataclass(slots=True, frozen=True)
 class BashResult:
     """Result from the `bash` tool."""
 
@@ -107,22 +149,28 @@ class ToolSandboxPolicy:
         """Create policy allowing only paths under `cwd`."""
         return cls(allowed_roots=(cwd.resolve(),))
 
+    @property
+    def permissions(self) -> ToolPermissionPolicy:
+        """Expose read/write/execute policy as a first-class object."""
+        return ToolPermissionPolicy(
+            allow_read=self.allow_read,
+            allow_write=self.allow_write,
+            allow_execute=self.allow_execute,
+        )
+
     def ensure_read_allowed(self, path: Path) -> None:
         """Ensure read access is allowed for path."""
-        if not self.allow_read:
-            raise ToolPermissionError.read_disabled()
+        self.permissions.ensure_allowed("read")
         self._ensure_path_allowed(path)
 
     def ensure_write_allowed(self, path: Path) -> None:
         """Ensure write access is allowed for path."""
-        if not self.allow_write:
-            raise ToolPermissionError.write_disabled()
+        self.permissions.ensure_allowed("write")
         self._ensure_path_allowed(path)
 
     def ensure_execute_allowed(self) -> None:
         """Ensure process execution is allowed."""
-        if not self.allow_execute:
-            raise ToolPermissionError.execute_disabled()
+        self.permissions.ensure_allowed("execute")
 
     def _ensure_path_allowed(self, path: Path) -> None:
         resolved = path.resolve()

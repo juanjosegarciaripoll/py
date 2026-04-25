@@ -6,6 +6,7 @@ from .builtin import (
     GrepMatch,
     ToolError,
     ToolPermissionError,
+    ToolPermissionPolicy,
     ToolSandboxPolicy,
 )
 
@@ -15,5 +16,6 @@ __all__ = [
     "GrepMatch",
     "ToolError",
     "ToolPermissionError",
+    "ToolPermissionPolicy",
     "ToolSandboxPolicy",
 ]

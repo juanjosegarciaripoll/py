@@ -44,6 +44,7 @@ from .tools import (
     GrepMatch,
     ToolError,
     ToolPermissionError,
+    ToolPermissionPolicy,
     ToolSandboxPolicy,
 )
 from .tui_controller import TuiCommandResult, TuiController
@@ -76,6 +77,7 @@ __all__ = [
     "SkillValidationError",
     "ToolError",
     "ToolPermissionError",
+    "ToolPermissionPolicy",
     "ToolSandboxPolicy",
     "TuiCommandResult",
     "TuiController",

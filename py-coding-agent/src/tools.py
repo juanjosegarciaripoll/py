@@ -10,6 +10,7 @@ try:
         GrepMatch,
         ToolError,
         ToolPermissionError,
+        ToolPermissionPolicy,
         ToolSandboxPolicy,
     )
 except ModuleNotFoundError:
@@ -23,6 +24,7 @@ except ModuleNotFoundError:
         GrepMatch,
         ToolError,
         ToolPermissionError,
+        ToolPermissionPolicy,
         ToolSandboxPolicy,
     )
 
@@ -32,5 +34,6 @@ __all__ = [
     "GrepMatch",
     "ToolError",
     "ToolPermissionError",
+    "ToolPermissionPolicy",
     "ToolSandboxPolicy",
 ]

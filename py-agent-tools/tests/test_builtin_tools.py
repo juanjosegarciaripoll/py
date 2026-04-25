@@ -9,7 +9,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from py_agent_tools import BuiltinToolExecutor, ToolPermissionError, ToolSandboxPolicy
+from py_agent_tools import (
+    BuiltinToolExecutor,
+    ToolPermissionError,
+    ToolPermissionPolicy,
+    ToolSandboxPolicy,
+)
 
 TMP_DIR = Path(__file__).resolve().parent / ".tmp"
 ALPHA_MATCH_COUNT = 2
@@ -226,6 +231,46 @@ class ToolTests(unittest.TestCase):
         assert_raises_tool_error("unknown", {})
         assert_raises_tool_error("read", {})
         assert_raises_tool_error("find", {"pattern": 5})
+
+    def test_permission_policy_allow_and_deny_helpers(self) -> None:
+        allow_all = ToolPermissionPolicy.allow_all()
+        assert allow_all.is_allowed("read") is True
+        assert allow_all.is_allowed("write") is True
+        assert allow_all.is_allowed("execute") is True
+
+        deny_all = ToolPermissionPolicy.deny_all()
+        assert deny_all.is_allowed("read") is False
+        assert deny_all.is_allowed("write") is False
+        assert deny_all.is_allowed("execute") is False
+
+    def test_permission_policy_ensure_allowed_raises(self) -> None:
+        policy = ToolPermissionPolicy(
+            allow_read=False,
+            allow_write=False,
+            allow_execute=False,
+        )
+        for permission in ("read", "write", "execute"):
+            failed = False
+            try:
+                policy.ensure_allowed(permission)
+            except ToolPermissionError:
+                failed = True
+            else:
+                message = "Expected denied permission to raise ToolPermissionError"
+                raise AssertionError(message)
+            assert failed is True
+
+    def test_sandbox_policy_exposes_permission_object(self) -> None:
+        sandbox = ToolSandboxPolicy(
+            allowed_roots=(TMP_DIR.resolve(),),
+            allow_read=True,
+            allow_write=False,
+            allow_execute=True,
+        )
+        permissions = sandbox.permissions
+        assert permissions.is_allowed("read") is True
+        assert permissions.is_allowed("write") is False
+        assert permissions.is_allowed("execute") is True
 
 
 if __name__ == "__main__":

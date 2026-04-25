@@ -124,9 +124,13 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
 
 ### Phase 5: Sandboxing Implementation
 
-**Status:** Not Started
+**Status:** In progress
 
 1. Define permission system for read/write/execute policies.
+   Initial implementation completed:
+   - Added `ToolPermissionPolicy` as an explicit read/write/execute policy object.
+   - Wired `ToolSandboxPolicy` permission checks through the policy object while preserving existing flags for backward compatibility.
+   - Added unit tests for allow/deny behavior and sandbox-policy permission projection.
 2. Implement safe bash interpreter as Python-based sh subset parser.
 3. Integrate permissions into read, write, and bash tools.
 4. Add configuration options for permission policies.
