@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import io
 import json
+import shutil
 import sys
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src import session
 from src.cli import CodingAgentApp, RunConfig, build_parser, main, parse_args
 
 ARGPARSE_ERROR_EXIT_CODE = 2
+TMP_DIR = Path(__file__).resolve().parent / ".tmp"
 
 
 class CliTests(unittest.TestCase):
@@ -23,11 +26,32 @@ class CliTests(unittest.TestCase):
         namespace = parser.parse_args([])
         assert namespace.mode == "interactive"
         assert namespace.prompt == ""
+        assert namespace.session_file is None
+        assert namespace.branch == "main"
 
     def test_parse_args_print_mode(self) -> None:
         config = parse_args(["--mode", "print", "hello"])
         assert config.mode == "print"
         assert config.prompt == "hello"
+        assert config.session_file is None
+        assert config.branch == "main"
+
+    def test_parse_args_with_session_options(self) -> None:
+        config = parse_args(
+            [
+                "--mode",
+                "json",
+                "--session-file",
+                "tmp/session.jsonl",
+                "--branch",
+                "feature-x",
+                "hello",
+            ]
+        )
+        assert config.mode == "json"
+        assert config.prompt == "hello"
+        assert config.session_file == "tmp/session.jsonl"
+        assert config.branch == "feature-x"
 
     def test_parse_args_rejects_invalid_mode(self) -> None:
         error: BaseException | None = None
@@ -42,7 +66,7 @@ class CliTests(unittest.TestCase):
         app = CodingAgentApp()
         stdout = io.StringIO()
         exit_code = app.run(
-            RunConfig(mode="print", prompt="hello"),
+            RunConfig(mode="print", prompt="hello", session_file=None, branch="main"),
             stdin=io.StringIO(),
             stdout=stdout,
         )
@@ -53,7 +77,7 @@ class CliTests(unittest.TestCase):
         app = CodingAgentApp()
         stdout = io.StringIO()
         exit_code = app.run(
-            RunConfig(mode="json", prompt="hello"),
+            RunConfig(mode="json", prompt="hello", session_file=None, branch="main"),
             stdin=io.StringIO(),
             stdout=stdout,
         )
@@ -68,7 +92,12 @@ class CliTests(unittest.TestCase):
         stdin = io.StringIO("test\nexit\n")
         stdout = io.StringIO()
         exit_code = app.run(
-            RunConfig(mode="interactive", prompt=""),
+            RunConfig(
+                mode="interactive",
+                prompt="",
+                session_file=None,
+                branch="main",
+            ),
             stdin=stdin,
             stdout=stdout,
         )
@@ -81,7 +110,12 @@ class CliTests(unittest.TestCase):
         app = CodingAgentApp()
         stdout = io.StringIO()
         exit_code = app.run(
-            RunConfig(mode="interactive", prompt=""),
+            RunConfig(
+                mode="interactive",
+                prompt="",
+                session_file=None,
+                branch="main",
+            ),
             stdin=io.StringIO(""),
             stdout=stdout,
         )
@@ -98,7 +132,7 @@ class CliTests(unittest.TestCase):
         stdin = io.StringIO(json.dumps(request) + "\n" + '{"method":"shutdown"}\n')
         stdout = io.StringIO()
         exit_code = app.run(
-            RunConfig(mode="rpc", prompt=""),
+            RunConfig(mode="rpc", prompt="", session_file=None, branch="main"),
             stdin=stdin,
             stdout=stdout,
         )
@@ -122,7 +156,7 @@ class CliTests(unittest.TestCase):
         )
         stdout = io.StringIO()
         exit_code = app.run(
-            RunConfig(mode="rpc", prompt=""),
+            RunConfig(mode="rpc", prompt="", session_file=None, branch="main"),
             stdin=stdin,
             stdout=stdout,
         )
@@ -134,6 +168,42 @@ class CliTests(unittest.TestCase):
         assert lines[3] == '{"error":"invalid_params"}'
         assert lines[4] == '{"error":"invalid_params"}'
         assert lines[5] == '{"ok":true}'
+
+    def test_print_mode_persists_session_record(self) -> None:
+        app = CodingAgentApp()
+        test_dir = TMP_DIR / "cli-session"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            session_path = test_dir / "session.jsonl"
+            now_ms = 1_710_000_000_000
+            original_timestamp = session.timestamp_ms
+            try:
+                session.timestamp_ms = lambda: now_ms
+                stdout = io.StringIO()
+                exit_code = app.run(
+                    RunConfig(
+                        mode="print",
+                        prompt="hello",
+                        session_file=str(session_path),
+                        branch="feature-x",
+                    ),
+                    stdin=io.StringIO(),
+                    stdout=stdout,
+                )
+            finally:
+                session.timestamp_ms = original_timestamp
+            assert exit_code == 0
+            lines = session_path.read_text(encoding="utf-8").splitlines()
+            assert len(lines) == 1
+            payload = json.loads(lines[0])
+            assert payload["timestamp_ms"] == now_ms
+            assert payload["branch"] == "feature-x"
+            assert payload["mode"] == "print"
+            assert payload["prompt"] == "hello"
+            assert payload["response"] == "Echo: hello"
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
 
     def test_main_uses_parsed_args(self) -> None:
         original_stdin = sys.stdin

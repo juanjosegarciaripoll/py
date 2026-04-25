@@ -8,11 +8,14 @@ from .cli import (
     main,
     parse_args,
 )
+from .session import SessionRecord, SessionStore
 
 __all__ = [
     "CodingAgentApp",
     "ExecutionMode",
     "RunConfig",
+    "SessionRecord",
+    "SessionStore",
     "build_parser",
     "main",
     "parse_args",

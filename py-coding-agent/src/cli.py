@@ -6,10 +6,12 @@ import argparse
 import json
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal, TextIO, cast
 
+from .session import SessionStore
+
 type ExecutionMode = Literal["interactive", "print", "json", "rpc"]
-type JsonRpcRequest = dict[str, object]
 
 
 def _as_str_object_dict(value: object) -> dict[str, object] | None:
@@ -31,6 +33,8 @@ class RunConfig:
 
     mode: ExecutionMode
     prompt: str
+    session_file: str | None
+    branch: str
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -48,6 +52,16 @@ def build_parser() -> argparse.ArgumentParser:
         default="",
         help="Prompt to process",
     )
+    parser.add_argument(
+        "--session-file",
+        default=None,
+        help="Optional JSONL session file path",
+    )
+    parser.add_argument(
+        "--branch",
+        default="main",
+        help="Session branch name",
+    )
     return parser
 
 
@@ -56,7 +70,14 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
     namespace = build_parser().parse_args(argv)
     mode: ExecutionMode = namespace.mode
     prompt: str = namespace.prompt
-    return RunConfig(mode=mode, prompt=prompt)
+    session_file = namespace.session_file
+    branch: str = namespace.branch
+    return RunConfig(
+        mode=mode,
+        prompt=prompt,
+        session_file=session_file,
+        branch=branch,
+    )
 
 
 class CodingAgentApp:
@@ -77,17 +98,29 @@ class CodingAgentApp:
         stdout: TextIO,
     ) -> int:
         """Run one mode and return process exit code."""
+        store = self._build_store(config)
         match config.mode:
             case "interactive":
-                return self._run_interactive(stdout=stdout, stdin=stdin)
+                return self._run_interactive(stdout=stdout, stdin=stdin, store=store)
             case "print":
-                return self._run_print(prompt=config.prompt, stdout=stdout)
+                return self._run_print(prompt=config.prompt, stdout=stdout, store=store)
             case "json":
-                return self._run_json(prompt=config.prompt, stdout=stdout)
+                return self._run_json(prompt=config.prompt, stdout=stdout, store=store)
             case "rpc":
-                return self._run_rpc(stdout=stdout, stdin=stdin)
+                return self._run_rpc(stdout=stdout, stdin=stdin, store=store)
 
-    def _run_interactive(self, *, stdout: TextIO, stdin: TextIO) -> int:
+    def _build_store(self, config: RunConfig) -> SessionStore | None:
+        if config.session_file is None:
+            return None
+        return SessionStore(path=Path(config.session_file), branch=config.branch)
+
+    def _run_interactive(
+        self,
+        *,
+        stdout: TextIO,
+        stdin: TextIO,
+        store: SessionStore | None,
+    ) -> int:
         stdout.write("Interactive mode. Type 'exit' to quit.\n")
         while True:
             stdout.write("> ")
@@ -97,22 +130,61 @@ class CodingAgentApp:
             prompt = line.strip()
             if prompt in {"exit", "quit"}:
                 return 0
-            stdout.write(f"{self.respond(prompt)}\n")
+            response = self.respond(prompt)
+            stdout.write(f"{response}\n")
+            self._persist_interaction(
+                store=store,
+                mode="interactive",
+                prompt=prompt,
+                response=response,
+            )
 
-    def _run_print(self, *, prompt: str, stdout: TextIO) -> int:
-        stdout.write(f"{self.respond(prompt)}\n")
+    def _run_print(
+        self,
+        *,
+        prompt: str,
+        stdout: TextIO,
+        store: SessionStore | None,
+    ) -> int:
+        response = self.respond(prompt)
+        stdout.write(f"{response}\n")
+        self._persist_interaction(
+            store=store,
+            mode="print",
+            prompt=prompt,
+            response=response,
+        )
         return 0
 
-    def _run_json(self, *, prompt: str, stdout: TextIO) -> int:
+    def _run_json(
+        self,
+        *,
+        prompt: str,
+        stdout: TextIO,
+        store: SessionStore | None,
+    ) -> int:
+        response = self.respond(prompt)
         payload = {
             "mode": "json",
             "prompt": prompt,
-            "response": self.respond(prompt),
+            "response": response,
         }
         stdout.write(json.dumps(payload) + "\n")
+        self._persist_interaction(
+            store=store,
+            mode="json",
+            prompt=prompt,
+            response=response,
+        )
         return 0
 
-    def _run_rpc(self, *, stdout: TextIO, stdin: TextIO) -> int:
+    def _run_rpc(
+        self,
+        *,
+        stdout: TextIO,
+        stdin: TextIO,
+        store: SessionStore | None,
+    ) -> int:
         for line in stdin:
             text = line.strip()
             if not text:
@@ -142,12 +214,31 @@ class CodingAgentApp:
                 stdout.write('{"error":"invalid_params"}\n')
                 continue
             request_id = request.get("id")
+            response_text = self.respond(prompt_value)
             response = {
                 "id": request_id,
-                "result": {"response": self.respond(prompt_value)},
+                "result": {"response": response_text},
             }
             stdout.write(json.dumps(response) + "\n")
+            self._persist_interaction(
+                store=store,
+                mode="rpc",
+                prompt=prompt_value,
+                response=response_text,
+            )
         return 0
+
+    def _persist_interaction(
+        self,
+        *,
+        store: SessionStore | None,
+        mode: str,
+        prompt: str,
+        response: str,
+    ) -> None:
+        if store is None:
+            return
+        store.append_interaction(mode=mode, prompt=prompt, response=response)
 
 
 def main(argv: list[str] | None = None) -> int:
