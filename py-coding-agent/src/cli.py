@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TextIO, cast
 
@@ -13,6 +13,7 @@ from .compaction import CompactionSettings
 from .config import AppConfig, load_config
 from .extensions import AppEvent, EventBus, EventListener
 from .session import CompactionRecord, SessionStore, timestamp_ms
+from .tools import BashResult, BuiltinToolExecutor, GrepMatch, ToolError
 from .tui import has_textual_dependency, launch_tui_mode
 
 if TYPE_CHECKING:
@@ -133,6 +134,7 @@ class CodingAgentApp:
 
     def __init__(self, *, event_bus: EventBus | None = None) -> None:
         self._event_bus = event_bus or EventBus()
+        self._tool_executor = BuiltinToolExecutor(cwd=Path.cwd())
 
     def subscribe(self, listener: EventListener) -> Callable[[], None]:
         """Subscribe to app events and return an unsubscribe callback."""
@@ -307,6 +309,10 @@ class CodingAgentApp:
             if method == "shutdown":
                 stdout.write('{"ok":true}\n')
                 return 0
+            if method == "tool":
+                response = self._rpc_tool_response(request=request)
+                stdout.write(json.dumps(response) + "\n")
+                continue
             if method != "prompt":
                 stdout.write('{"error":"method_not_found"}\n')
                 continue
@@ -335,6 +341,40 @@ class CodingAgentApp:
                 ),
             )
         return 0
+
+    def _rpc_tool_response(self, *, request: dict[str, object]) -> dict[str, object]:
+        params = _as_str_object_dict(request.get("params"))
+        if params is None:
+            return {"id": request.get("id"), "error": {"code": "invalid_params"}}
+        tool_name = params.get("name")
+        arguments = _as_str_object_dict(params.get("arguments"))
+        if not isinstance(tool_name, str) or arguments is None:
+            return {"id": request.get("id"), "error": {"code": "invalid_params"}}
+        try:
+            result = self._tool_executor.execute(tool_name, arguments)
+        except ToolError as error:
+            return {
+                "id": request.get("id"),
+                "error": {"code": "tool_error", "message": str(error)},
+            }
+        return {"id": request.get("id"), "result": self._serialize_tool_result(result)}
+
+    def _serialize_tool_result(self, result: object) -> object:
+        match result:
+            case BashResult() | GrepMatch():
+                return asdict(result)
+            case list():
+                values = cast("list[object]", result)
+                serialized: list[object] = []
+                for item in values:
+                    match item:
+                        case GrepMatch():
+                            serialized.append(asdict(item))
+                        case _:
+                            serialized.append(item)
+                return serialized
+            case _:
+                return result
 
     def _run_tui(
         self,

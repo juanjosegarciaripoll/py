@@ -8,7 +8,7 @@ import shutil
 import sys
 import unittest
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -270,6 +270,74 @@ class CliTests(unittest.TestCase):
         assert lines[3] == '{"error":"invalid_params"}'
         assert lines[4] == '{"error":"invalid_params"}'
         assert lines[5] == '{"ok":true}'
+
+    def test_run_rpc_mode_tool_success(self) -> None:
+        app = CodingAgentApp()
+        request: dict[str, object] = {
+            "id": "tool-1",
+            "method": "tool",
+            "params": {
+                "name": "find",
+                "arguments": {"pattern": "*.py", "base_path": "py-coding-agent/src"},
+            },
+        }
+        stdin = io.StringIO(json.dumps(request) + "\n" + '{"method":"shutdown"}\n')
+        stdout = io.StringIO()
+        exit_code = app.run(
+            RunConfig(
+                mode="rpc",
+                prompt="",
+                session_file=None,
+                branch="main",
+                config_file=None,
+                context_window_tokens=272000,
+                compaction_enabled=True,
+                compaction_reserve_tokens=16384,
+                compaction_keep_recent_tokens=20000,
+            ),
+            stdin=stdin,
+            stdout=stdout,
+        )
+        lines = [line for line in stdout.getvalue().splitlines() if line]
+        assert exit_code == 0
+        response = cast("dict[str, object]", json.loads(lines[0]))
+        assert response["id"] == "tool-1"
+        result = cast("list[object]", response["result"])
+        assert isinstance(result, list)
+        assert any(
+            isinstance(item, str) and item.endswith("cli.py")
+            for item in result
+        )
+
+    def test_run_rpc_mode_tool_error(self) -> None:
+        app = CodingAgentApp()
+        request: dict[str, object] = {
+            "id": "tool-2",
+            "method": "tool",
+            "params": {"name": "unknown", "arguments": {}},
+        }
+        stdin = io.StringIO(json.dumps(request) + "\n" + '{"method":"shutdown"}\n')
+        stdout = io.StringIO()
+        exit_code = app.run(
+            RunConfig(
+                mode="rpc",
+                prompt="",
+                session_file=None,
+                branch="main",
+                config_file=None,
+                context_window_tokens=272000,
+                compaction_enabled=True,
+                compaction_reserve_tokens=16384,
+                compaction_keep_recent_tokens=20000,
+            ),
+            stdin=stdin,
+            stdout=stdout,
+        )
+        lines = [line for line in stdout.getvalue().splitlines() if line]
+        assert exit_code == 0
+        response = json.loads(lines[0])
+        assert response["id"] == "tool-2"
+        assert response["error"]["code"] == "tool_error"
 
     def test_run_tui_mode_calls_launcher(self) -> None:
         class StubTuiApp(CodingAgentApp):

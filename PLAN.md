@@ -100,6 +100,11 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
    - LLM-driven summarization and thinking-level parity for compaction requests.
 5. Add extension system with hooks and event-driven architecture. Initial event bus and interaction hooks implemented.
 6. Integrate built-in tools (read, write, edit, bash, find, grep) with sandboxing policies.
+   Initial implementation completed:
+   - Added a typed built-in tool executor with `read`, `write`, `edit`, `bash`, `find`, `grep`.
+   - Added sandbox policy checks for read/write/execute with allowed-root path confinement.
+   - Integrated tool execution into RPC mode (`method="tool"`) with structured success/error payloads.
+   - Added unit tests for tool behavior and sandbox policy denial paths.
 7. Add skills system with Markdown-based definitions.
 8. Implement settings and configuration with TOML files. Initial defaults loading and CLI override behavior implemented.
 9. Create unit tests for CLI components.
