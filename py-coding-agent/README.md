@@ -8,4 +8,5 @@ Current implementation status:
 - Modes: `interactive`, `print`, `json`, `rpc`
 - Optional JSONL session persistence with branch support
 - Optional TOML config defaults (`[agent]` section)
+- Initial extension hooks via event bus (`interaction_complete`)
 - Unit tests for parsing and mode behavior

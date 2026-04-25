@@ -7,10 +7,14 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TextIO, cast
+from typing import TYPE_CHECKING, Literal, TextIO, cast
 
 from .config import AppConfig, load_config
-from .session import SessionStore
+from .extensions import AppEvent, EventBus, EventListener
+from .session import SessionStore, timestamp_ms
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 type ExecutionMode = Literal["interactive", "print", "json", "rpc"]
 
@@ -37,6 +41,13 @@ class RunConfig:
     session_file: str | None
     branch: str
     config_file: str | None
+
+
+@dataclass(slots=True)
+class _InteractionPayload:
+    mode: str
+    prompt: str
+    response: str
 
 
 def build_parser(*, defaults: AppConfig | None = None) -> argparse.ArgumentParser:
@@ -102,6 +113,13 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
 class CodingAgentApp:
     """Small execution harness with four user-facing modes."""
 
+    def __init__(self, *, event_bus: EventBus | None = None) -> None:
+        self._event_bus = event_bus or EventBus()
+
+    def subscribe(self, listener: EventListener) -> Callable[[], None]:
+        """Subscribe to app events and return an unsubscribe callback."""
+        return self._event_bus.subscribe(listener)
+
     def respond(self, prompt: str) -> str:
         """Produce a deterministic response for the current prompt."""
         text = prompt.strip()
@@ -120,13 +138,37 @@ class CodingAgentApp:
         store = self._build_store(config)
         match config.mode:
             case "interactive":
-                return self._run_interactive(stdout=stdout, stdin=stdin, store=store)
+                return self._run_interactive(
+                    stdout=stdout,
+                    stdin=stdin,
+                    store=store,
+                    branch=config.branch,
+                    session_file=config.session_file,
+                )
             case "print":
-                return self._run_print(prompt=config.prompt, stdout=stdout, store=store)
+                return self._run_print(
+                    prompt=config.prompt,
+                    stdout=stdout,
+                    store=store,
+                    branch=config.branch,
+                    session_file=config.session_file,
+                )
             case "json":
-                return self._run_json(prompt=config.prompt, stdout=stdout, store=store)
+                return self._run_json(
+                    prompt=config.prompt,
+                    stdout=stdout,
+                    store=store,
+                    branch=config.branch,
+                    session_file=config.session_file,
+                )
             case "rpc":
-                return self._run_rpc(stdout=stdout, stdin=stdin, store=store)
+                return self._run_rpc(
+                    stdout=stdout,
+                    stdin=stdin,
+                    store=store,
+                    branch=config.branch,
+                    session_file=config.session_file,
+                )
 
     def _build_store(self, config: RunConfig) -> SessionStore | None:
         if config.session_file is None:
@@ -139,6 +181,8 @@ class CodingAgentApp:
         stdout: TextIO,
         stdin: TextIO,
         store: SessionStore | None,
+        branch: str,
+        session_file: str | None,
     ) -> int:
         stdout.write("Interactive mode. Type 'exit' to quit.\n")
         while True:
@@ -153,9 +197,13 @@ class CodingAgentApp:
             stdout.write(f"{response}\n")
             self._persist_interaction(
                 store=store,
-                mode="interactive",
-                prompt=prompt,
-                response=response,
+                branch=branch,
+                session_file=session_file,
+                payload=_InteractionPayload(
+                    mode="interactive",
+                    prompt=prompt,
+                    response=response,
+                ),
             )
 
     def _run_print(
@@ -164,14 +212,20 @@ class CodingAgentApp:
         prompt: str,
         stdout: TextIO,
         store: SessionStore | None,
+        branch: str,
+        session_file: str | None,
     ) -> int:
         response = self.respond(prompt)
         stdout.write(f"{response}\n")
         self._persist_interaction(
             store=store,
-            mode="print",
-            prompt=prompt,
-            response=response,
+            branch=branch,
+            session_file=session_file,
+            payload=_InteractionPayload(
+                mode="print",
+                prompt=prompt,
+                response=response,
+            ),
         )
         return 0
 
@@ -181,6 +235,8 @@ class CodingAgentApp:
         prompt: str,
         stdout: TextIO,
         store: SessionStore | None,
+        branch: str,
+        session_file: str | None,
     ) -> int:
         response = self.respond(prompt)
         payload = {
@@ -191,9 +247,13 @@ class CodingAgentApp:
         stdout.write(json.dumps(payload) + "\n")
         self._persist_interaction(
             store=store,
-            mode="json",
-            prompt=prompt,
-            response=response,
+            branch=branch,
+            session_file=session_file,
+            payload=_InteractionPayload(
+                mode="json",
+                prompt=prompt,
+                response=response,
+            ),
         )
         return 0
 
@@ -203,6 +263,8 @@ class CodingAgentApp:
         stdout: TextIO,
         stdin: TextIO,
         store: SessionStore | None,
+        branch: str,
+        session_file: str | None,
     ) -> int:
         for line in stdin:
             text = line.strip()
@@ -241,9 +303,13 @@ class CodingAgentApp:
             stdout.write(json.dumps(response) + "\n")
             self._persist_interaction(
                 store=store,
-                mode="rpc",
-                prompt=prompt_value,
-                response=response_text,
+                branch=branch,
+                session_file=session_file,
+                payload=_InteractionPayload(
+                    mode="rpc",
+                    prompt=prompt_value,
+                    response=response_text,
+                ),
             )
         return 0
 
@@ -251,13 +317,27 @@ class CodingAgentApp:
         self,
         *,
         store: SessionStore | None,
-        mode: str,
-        prompt: str,
-        response: str,
+        branch: str,
+        session_file: str | None,
+        payload: _InteractionPayload,
     ) -> None:
+        event = AppEvent(
+            type="interaction_complete",
+            mode=payload.mode,
+            prompt=payload.prompt,
+            response=payload.response,
+            branch=branch,
+            session_file=session_file,
+            timestamp_ms=timestamp_ms(),
+        )
+        self._event_bus.emit(event)
         if store is None:
             return
-        store.append_interaction(mode=mode, prompt=prompt, response=response)
+        store.append_interaction(
+            mode=payload.mode,
+            prompt=payload.prompt,
+            response=payload.response,
+        )
 
 
 def main(argv: list[str] | None = None) -> int:

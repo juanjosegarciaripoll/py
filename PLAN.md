@@ -78,7 +78,7 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
 2. Set up Textual-based TUI with editor, keyboard shortcuts, and slash commands.
 3. Add session management with JSONL persistence and branching. Initial implementation and tests completed.
 4. Implement compaction system with token management and summarization.
-5. Add extension system with hooks and event-driven architecture.
+5. Add extension system with hooks and event-driven architecture. Initial event bus and interaction hooks implemented.
 6. Integrate built-in tools (read, write, edit, bash, find, grep) with sandboxing policies.
 7. Add skills system with Markdown-based definitions.
 8. Implement settings and configuration with TOML files. Initial defaults loading and CLI override behavior implemented.

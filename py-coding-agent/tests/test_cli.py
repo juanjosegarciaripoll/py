@@ -8,11 +8,15 @@ import shutil
 import sys
 import unittest
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src import session
 from src.cli import CodingAgentApp, RunConfig, build_parser, main, parse_args
+
+if TYPE_CHECKING:
+    from src.extensions import AppEvent
 
 ARGPARSE_ERROR_EXIT_CODE = 2
 TMP_DIR = Path(__file__).resolve().parent / ".tmp"
@@ -282,6 +286,33 @@ class CliTests(unittest.TestCase):
             sys.stdout = original_stdout
         assert exit_code == 0
         assert output == "Echo: from-main\n"
+
+    def test_subscribe_emits_interaction_event(self) -> None:
+        app = CodingAgentApp()
+        seen: list[AppEvent] = []
+
+        def listener(event: AppEvent) -> None:
+            seen.append(event)
+
+        unsubscribe = app.subscribe(listener)
+        app.run(
+            RunConfig(
+                mode="print",
+                prompt="hello",
+                session_file=None,
+                branch="branch-a",
+                config_file=None,
+            ),
+            stdin=io.StringIO(),
+            stdout=io.StringIO(),
+        )
+        unsubscribe()
+
+        assert len(seen) == 1
+        assert seen[0].type == "interaction_complete"
+        assert seen[0].mode == "print"
+        assert seen[0].prompt == "hello"
+        assert seen[0].branch == "branch-a"
 
 
 if __name__ == "__main__":

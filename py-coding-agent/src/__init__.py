@@ -9,11 +9,15 @@ from .cli import (
     parse_args,
 )
 from .config import AppConfig, load_config
+from .extensions import AppEvent, EventBus, EventListener
 from .session import SessionRecord, SessionStore
 
 __all__ = [
     "AppConfig",
+    "AppEvent",
     "CodingAgentApp",
+    "EventBus",
+    "EventListener",
     "ExecutionMode",
     "RunConfig",
     "SessionRecord",
