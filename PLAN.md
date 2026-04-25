@@ -132,6 +132,13 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
    - Wired `ToolSandboxPolicy` permission checks through the policy object while preserving existing flags for backward compatibility.
    - Added unit tests for allow/deny behavior and sandbox-policy permission projection.
 2. Implement safe bash interpreter as Python-based sh subset parser.
+   Granular implementation plan:
+   - Define shell subset and typed AST nodes (commands, args, env assignments, redirections, pipelines).
+   - Implement parser stages as composable elements (tokenizer, parser, validator, planner).
+   - Add runtime cancellation/signal propagation model for execution events.
+   - Design extensibility hooks for adding new syntax elements/handlers safely.
+   Initial progress:
+   - Added `shell_subset` AST models and structural validation helpers in `py-agent-tools`.
 3. Integrate permissions into read, write, and bash tools.
 4. Add configuration options for permission policies.
 
