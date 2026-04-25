@@ -15,6 +15,15 @@ from .shell_parser import (
     ShlexTokenizer,
     parse_shell_command,
 )
+from .shell_runtime import (
+    ShellCancellationToken,
+    ShellEventSink,
+    ShellExecutionCancelledError,
+    ShellExecutionError,
+    ShellExecutionEvent,
+    ShellExecutionEventKind,
+    emit_shell_event,
+)
 from .shell_subset import (
     ShellEnvAssignment,
     ShellLimits,
@@ -31,7 +40,13 @@ __all__ = [
     "BashResult",
     "BuiltinToolExecutor",
     "GrepMatch",
+    "ShellCancellationToken",
     "ShellEnvAssignment",
+    "ShellEventSink",
+    "ShellExecutionCancelledError",
+    "ShellExecutionError",
+    "ShellExecutionEvent",
+    "ShellExecutionEventKind",
     "ShellLimits",
     "ShellParseError",
     "ShellPipeline",
@@ -46,6 +61,7 @@ __all__ = [
     "ToolPermissionError",
     "ToolPermissionPolicy",
     "ToolSandboxPolicy",
+    "emit_shell_event",
     "parse_shell_command",
     "validate_shell_program",
 ]

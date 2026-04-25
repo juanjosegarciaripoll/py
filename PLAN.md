@@ -140,6 +140,7 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
    Initial progress:
    - Added `shell_subset` AST models and structural validation helpers in `py-agent-tools`.
    - Added composable parser stages with `ShlexTokenizer` and `ShellSubsetParser` to produce validated shell-subset AST programs.
+   - Added shell runtime primitives for cancellation tokens and structured execution event emission.
 3. Integrate permissions into read, write, and bash tools.
 4. Add configuration options for permission policies.
 
