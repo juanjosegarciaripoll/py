@@ -38,3 +38,4 @@ This project aims to recreate the Pi agentic framework using standard Python lib
 - Avoid using cast() when possible.
 - Tests should focus on public APIs for libraries, avoiding private methods.
 - Avoid long chains of ifs. Look for alternatives, such as match/case statements or dispatch based on dictionaries.
+- For `git commit`, request escalated execution directly instead of trying a non-escalated commit first.
