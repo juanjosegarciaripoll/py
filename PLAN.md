@@ -72,9 +72,9 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
 
 ### Phase 4: Coding Agent CLI (py-coding-agent)
 
-**Status:** Not Started
+**Status:** In progress
 
-1. Implement multi-mode execution (interactive, print, JSON, RPC).
+1. Implement multi-mode execution (interactive, print, JSON, RPC). Initial mode scaffold and tests implemented.
 2. Set up Textual-based TUI with editor, keyboard shortcuts, and slash commands.
 3. Add session management with JSONL persistence and branching.
 4. Implement compaction system with token management and summarization.
