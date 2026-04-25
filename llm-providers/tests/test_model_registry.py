@@ -50,6 +50,24 @@ class ModelRegistryTests(unittest.TestCase):
         openai_models = MODEL_REGISTRY.list_models("openai")
         assert openai_models
 
+    def test_to_dict_and_empty_provider_listing(self) -> None:
+        registry = ModelRegistry(
+            [
+                ModelDefinition(
+                    provider="openai",
+                    name="gpt-4o-mini",
+                    context_window=128_000,
+                    max_output_tokens=16_384,
+                )
+            ]
+        )
+        serialized = registry.to_dict()
+        assert (
+            serialized["openai"]["gpt-4o-mini"]["max_tokens"]
+            == EXPECTED_MINI_MAX_OUTPUT_TOKENS
+        )
+        assert registry.list_models("missing") == []
+
 
 if __name__ == "__main__":
     unittest.main()

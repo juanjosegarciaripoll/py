@@ -160,7 +160,9 @@ class ToolResultMessage(BaseModel):
     role: Literal["toolResult"] = "toolResult"
     tool_call_id: str
     tool_name: str
-    content: list[TextContent | ImageContent] = Field(default_factory=_user_content_list)
+    content: list[TextContent | ImageContent] = Field(
+        default_factory=_user_content_list
+    )
     details: JsonObject | None = None
     is_error: bool = False
     timestamp: int = Field(default_factory=_timestamp_ms)

@@ -50,7 +50,7 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
 
 ### Phase 3: Agent Framework (py-agent)
 
-**Status:** Not Started
+**Status:** In progress
 
 1. Mirror `pi-mono/packages/agent/src/types.ts` contracts in Python:
    `AgentMessage` abstraction, agent context/state, tool/result types, event union, queue modes, tool execution modes, and hook context/result types.
@@ -68,6 +68,7 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
    proxy stream function, proxy event decoding/reconstruction, partial tool-call JSON handling, and done/error finalization into assistant messages.
 8. Implement unit test parity against `packages/agent/test` behavior:
    event order, continue edge cases, queue semantics, tool execution ordering in parallel/sequential, hook behavior, termination rules, and proxy stream parsing.
+9. Raise py-agent test coverage toward the project target and document any justified exclusions if 100% line coverage is not practical.
 
 ### Phase 4: Coding Agent CLI (py-coding-agent)
 

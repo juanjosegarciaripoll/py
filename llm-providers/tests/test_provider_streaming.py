@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.providers.anthropic import AnthropicProvider
 from src.providers.openai import OpenAIProvider
 from src.providers.openai_compatible import OpenAICompatibleProvider
-from src.types import AssistantMessageEvent, Message, Role, TextContent
+from src.types import AssistantMessageEvent, Message, Role, TextContent, ToolCall
 
 OPENAI_EXPECTED_EVENT_COUNT = 3
 OPENAI_EXPECTED_TOTAL_TOKENS = 3
@@ -26,6 +26,7 @@ OPENAI_COMPAT_EXPECTED_EVENT_COUNT = 2
 ANTHROPIC_EXPECTED_EVENT_COUNT = 3
 ANTHROPIC_EXPECTED_TOTAL_TOKENS = 9
 EXPECTED_TOOL_DELTA_EVENT_MINIMUM = 2
+EXPECTED_ANTHROPIC_CONVERTED_MESSAGES = 2
 ACCESS_CHECK_OK = True
 ACCESS_CHECK_FAILURE_MESSAGE = "network error"
 
@@ -425,6 +426,42 @@ class AnthropicStreamingTests(unittest.TestCase):
         assert final_tool_call.function["arguments"] == '{"city":"Madrid"}'
         finish_events = [event for event in events if event.finish_reason is not None]
         assert finish_events[-1].finish_reason == "toolUse"
+
+    def test_convert_messages_and_access_failure(self) -> None:
+        provider = AnthropicProvider(api_key="test-key")
+        assistant = Message(
+            role=Role.ASSISTANT,
+            content=[TextContent(type="text", text="hello")],
+            tool_calls=[
+                ToolCall(
+                    id="call_1",
+                    function={"name": "search", "arguments": '{"q":"x"}'},
+                )
+            ],
+        )
+        tool_message = Message(
+            role=Role.TOOL,
+            content=[TextContent(type="text", text="tool result")],
+            tool_call_id="call_1",
+        )
+        converted = provider.convert_messages([assistant, tool_message])
+
+        assert len(converted) == EXPECTED_ANTHROPIC_CONVERTED_MESSAGES
+        first_content = converted[0]["content"]
+        assert isinstance(first_content, list)
+        assert first_content[1]["type"] == "tool_use"
+        second_content = converted[1]["content"]
+        assert isinstance(second_content, list)
+        assert second_content[0]["type"] == "tool_result"
+
+        with patch(
+            "src.providers.anthropic.httpx.Client",
+            return_value=FakeSyncClient([], should_raise=True),
+        ):
+            ok, detail = provider.check_model_access("claude-3-5-haiku-20241022")
+
+        assert ok is False
+        assert isinstance(detail, str)
 
 
 class OpenAIAccessibilityTests(unittest.TestCase):

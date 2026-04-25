@@ -44,6 +44,15 @@ class ProviderConfigTests(unittest.TestCase):
             msg = "Expected ValidationError for missing provider/model"
             raise AssertionError(msg)
 
+    def test_provider_config_from_json_payload_must_be_object(self) -> None:
+        try:
+            ProvidersConfig.from_json("[]")
+        except TypeError:
+            pass
+        else:
+            msg = "Expected TypeError when ProvidersConfig JSON is not an object"
+            raise AssertionError(msg)
+
 
 class ProvidersConfigTests(unittest.TestCase):
     """Tests for top-level providers config."""

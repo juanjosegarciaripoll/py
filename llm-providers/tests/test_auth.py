@@ -50,6 +50,17 @@ class OAuthTokenTests(unittest.TestCase):
             msg = "Expected ValidationError when access_token is missing"
             raise AssertionError(msg)
 
+    def test_naive_expiry_is_normalized_and_missing_expiry_is_not_expired(self) -> None:
+        token = OAuthToken.from_dict(
+            {
+                "access_token": "token-value",
+                "expires_at": "2030-01-01T00:00:00",
+            }
+        )
+        assert token.expires_at is not None
+        assert token.expires_at.tzinfo is not None
+        assert OAuthToken(access_token="token-value").is_expired() is False  # noqa: S106
+
 
 class ApiKeyStoreTests(unittest.TestCase):
     """Tests for API key store resolution rules."""
@@ -73,6 +84,17 @@ class ApiKeyStoreTests(unittest.TestCase):
             pass
         else:
             msg = "Expected ValueError when API key is missing"
+            raise AssertionError(msg)
+
+    def test_env_var_name_and_set_validation(self) -> None:
+        store = ApiKeyStore()
+        assert store.env_var_name("openai-compatible") == "OPENAI_COMPATIBLE_API_KEY"
+        try:
+            store.set("openai", "")
+        except ValueError:
+            pass
+        else:
+            msg = "Expected ValueError when API key is empty"
             raise AssertionError(msg)
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -193,6 +194,103 @@ class ConfigureProvidersInteractiveTests(unittest.TestCase):
         )
         assert len(config.providers) == EXPECTED_TWO_PROVIDERS
         assert config.default_provider == "second"
+
+    def test_wizard_handles_duplicate_names_custom_model_env_and_success_check(
+        self,
+    ) -> None:
+        previous_openai_env = os.environ.get("OPENAI_API_KEY")
+        inputs = iter(
+            [
+                "dup",
+                "1",
+                "",
+                "",
+                "bad env",
+                "y",
+                "secret-value",
+                "y",
+                "y",
+                "dup",
+                "unique",
+                "2",
+                "",
+                "custom-model",
+                "",
+                "http://localhost:8000/v1/",
+                "",
+                "n",
+                "y",
+                "n",
+                "2",
+            ]
+        )
+        printed: list[str] = []
+        registry = ModelRegistry(
+            [
+                ModelDefinition(
+                    provider="openai",
+                    name="gpt-4o-mini",
+                    context_window=128_000,
+                    max_output_tokens=16_384,
+                ),
+            ]
+        )
+
+        def _input(_: str) -> str:
+            return next(inputs)
+
+        def _print(message: str) -> None:
+            printed.append(message)
+
+        configured_openai_env: str | None = None
+        try:
+            config = configure_providers_interactive(
+                ["openai", "openai-compatible"],
+                model_registry=registry,
+                input_fn=_input,
+                output_fn=_print,
+                model_access_checker=lambda provider_config: (
+                    True,
+                    f"checked {provider_config.name}",
+                ),
+            )
+            configured_openai_env = os.environ.get("OPENAI_API_KEY")
+        finally:
+            if previous_openai_env is None:
+                os.environ.pop("OPENAI_API_KEY", None)
+            else:
+                os.environ["OPENAI_API_KEY"] = previous_openai_env
+
+        assert len(config.providers) == EXPECTED_TWO_PROVIDERS
+        assert config.providers[0].name == "dup"
+        assert config.providers[0].api_key_env == "OPENAI_API_KEY"
+        assert config.providers[1].name == "unique"
+        assert config.providers[1].provider == "openai-compatible"
+        assert config.providers[1].model == "custom-model"
+        assert config.providers[1].base_url == "http://localhost:8000/v1"
+        assert config.default_provider == "unique"
+        assert any("already exists" in message for message in printed)
+        assert any(
+            "Base URL is required for openai-compatible providers." in message
+            for message in printed
+        )
+        assert any(
+            "Invalid env var name. Using default." in message for message in printed
+        )
+        assert any("Value cannot be empty." in message for message in printed)
+        assert any("Model access check passed." in message for message in printed)
+        assert any("checked dup" in message for message in printed)
+        assert any("checked unique" in message for message in printed)
+        assert configured_openai_env == "secret-value"
+
+    def test_empty_provider_list_raises_in_configure(self) -> None:
+        try:
+            configure_providers_interactive([])
+        except ValueError:
+            pass
+        else:
+            msg = "Expected ValueError for empty provider list in wizard"
+            raise AssertionError(msg)
 
 
 if __name__ == "__main__":

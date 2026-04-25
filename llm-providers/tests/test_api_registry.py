@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.api_registry import ApiRegistry, get_api_key
 from src.auth import ApiKeyStore
 from src.provider import Provider
-from src.types import AssistantMessageEvent, Message, Tool
+from src.types import AssistantMessageEvent, Message, Role, TextContent, Tool
 
 
 class DummyProvider(Provider):
@@ -98,6 +98,22 @@ class ApiRegistryTests(unittest.TestCase):
         store = ApiKeyStore(overrides={"openai": "token"})
         registry = ApiRegistry(api_key_store=store)
         assert registry.get_api_key("openai") == "token"
+
+    def test_provider_helpers_convert_message_and_text_blocks(self) -> None:
+        provider = DummyProvider()
+        message = Message(
+            role=Role.USER,
+            content=[TextContent(type="text", text="hello")],
+        )
+        tool_message = Message(
+            role=Role.TOOL,
+            content=[TextContent(type="text", text="tool")],
+        )
+        assert provider.convert_message(message) is None
+        assert provider.convert_message(tool_message) is None
+        assert provider.convert_messages([message, tool_message]) == []
+        assert provider.text_values(message) == ["hello"]
+        assert provider.text_blocks(message) == [{"type": "text", "text": "hello"}]
 
 
 if __name__ == "__main__":
