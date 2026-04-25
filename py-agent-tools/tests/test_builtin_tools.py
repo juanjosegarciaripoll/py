@@ -232,18 +232,29 @@ class ToolTests(unittest.TestCase):
         assert_raises_tool_error("read", {})
         assert_raises_tool_error("find", {"pattern": 5})
 
-    def test_bash_rejects_unsupported_control_operator(self) -> None:
-        test_dir = TMP_DIR / "tools-bash-unsupported"
+    def test_bash_supports_and_condition(self) -> None:
+        test_dir = TMP_DIR / "tools-bash-and-condition"
         shutil.rmtree(test_dir, ignore_errors=True)
         test_dir.mkdir(parents=True, exist_ok=True)
         try:
             tools = BuiltinToolExecutor(cwd=test_dir)
-            failed = False
-            try:
-                tools.bash("echo alpha && echo beta")
-            except Exception:  # noqa: BLE001
-                failed = True
-            assert failed is True
+            result = tools.bash("echo alpha && echo beta")
+            assert result.exit_code == 0
+            assert "alpha" in result.stdout
+            assert "beta" in result.stdout
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_bash_supports_or_condition(self) -> None:
+        test_dir = TMP_DIR / "tools-bash-or-condition"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            tools = BuiltinToolExecutor(cwd=test_dir)
+            result = tools.bash("missing_command_xyz || echo recovered")
+            assert result.exit_code == 0
+            assert "recovered" in result.stdout
+            assert "Command not found" in result.stderr
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 

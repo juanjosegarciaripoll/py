@@ -12,6 +12,7 @@ from py_agent_tools import (
     ShellEnvAssignment,
     ShellLimits,
     ShellPipeline,
+    ShellPipelineStep,
     ShellProgram,
     ShellRedirection,
     ShellSimpleCommand,
@@ -26,17 +27,19 @@ class ShellSubsetTests(unittest.TestCase):
 
     def test_validate_shell_program_accepts_basic_program(self) -> None:
         program = ShellProgram(
-            pipelines=(
-                ShellPipeline(
-                    commands=(
-                        ShellSimpleCommand(
-                            program="echo",
-                            arguments=("hello",),
-                            env_assignments=(
-                                ShellEnvAssignment(name="FOO", value="bar"),
-                            ),
-                            redirections=(
-                                ShellRedirection(operator=">", target="out.txt"),
+            steps=(
+                ShellPipelineStep(
+                    pipeline=ShellPipeline(
+                        commands=(
+                            ShellSimpleCommand(
+                                program="echo",
+                                arguments=("hello",),
+                                env_assignments=(
+                                    ShellEnvAssignment(name="FOO", value="bar"),
+                                ),
+                                redirections=(
+                                    ShellRedirection(operator=">", target="out.txt"),
+                                ),
                             ),
                         ),
                     ),
@@ -56,18 +59,20 @@ class ShellSubsetTests(unittest.TestCase):
     def test_validate_rejects_empty_program(self) -> None:
         failed = False
         try:
-            validate_shell_program(ShellProgram(pipelines=()))
+            validate_shell_program(ShellProgram(steps=()))
         except ShellSubsetError:
             failed = True
         assert failed is True
 
     def test_validate_rejects_pipeline_when_feature_disabled(self) -> None:
         program = ShellProgram(
-            pipelines=(
-                ShellPipeline(
-                    commands=(
-                        ShellSimpleCommand(program="echo"),
-                        ShellSimpleCommand(program="cat"),
+            steps=(
+                ShellPipelineStep(
+                    pipeline=ShellPipeline(
+                        commands=(
+                            ShellSimpleCommand(program="echo"),
+                            ShellSimpleCommand(program="cat"),
+                        ),
                     ),
                 ),
             ),
@@ -84,13 +89,15 @@ class ShellSubsetTests(unittest.TestCase):
 
     def test_validate_rejects_env_assignments_when_feature_disabled(self) -> None:
         program = ShellProgram(
-            pipelines=(
-                ShellPipeline(
-                    commands=(
-                        ShellSimpleCommand(
-                            program="echo",
-                            env_assignments=(
-                                ShellEnvAssignment(name="FOO", value="bar"),
+            steps=(
+                ShellPipelineStep(
+                    pipeline=ShellPipeline(
+                        commands=(
+                            ShellSimpleCommand(
+                                program="echo",
+                                env_assignments=(
+                                    ShellEnvAssignment(name="FOO", value="bar"),
+                                ),
                             ),
                         ),
                     ),
@@ -109,13 +116,15 @@ class ShellSubsetTests(unittest.TestCase):
 
     def test_validate_rejects_redirections_when_feature_disabled(self) -> None:
         program = ShellProgram(
-            pipelines=(
-                ShellPipeline(
-                    commands=(
-                        ShellSimpleCommand(
-                            program="echo",
-                            redirections=(
-                                ShellRedirection(operator=">", target="out.txt"),
+            steps=(
+                ShellPipelineStep(
+                    pipeline=ShellPipeline(
+                        commands=(
+                            ShellSimpleCommand(
+                                program="echo",
+                                redirections=(
+                                    ShellRedirection(operator=">", target="out.txt"),
+                                ),
                             ),
                         ),
                     ),
@@ -134,10 +143,12 @@ class ShellSubsetTests(unittest.TestCase):
 
     def test_validate_rejects_stderr_pipe_when_feature_disabled(self) -> None:
         program = ShellProgram(
-            pipelines=(
-                ShellPipeline(
-                    commands=(ShellSimpleCommand(program="echo"),),
-                    pipe_stderr=True,
+            steps=(
+                ShellPipelineStep(
+                    pipeline=ShellPipeline(
+                        commands=(ShellSimpleCommand(program="echo"),),
+                        pipe_stderr=True,
+                    ),
                 ),
             ),
         )
@@ -155,7 +166,13 @@ class ShellSubsetTests(unittest.TestCase):
         many_commands = tuple(
             ShellSimpleCommand(program=f"cmd{index}") for index in range(3)
         )
-        program = ShellProgram(pipelines=(ShellPipeline(commands=many_commands),))
+        program = ShellProgram(
+            steps=(
+                ShellPipelineStep(
+                    pipeline=ShellPipeline(commands=many_commands),
+                ),
+            )
+        )
         failed = False
         try:
             validate_shell_program(
@@ -169,4 +186,3 @@ class ShellSubsetTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

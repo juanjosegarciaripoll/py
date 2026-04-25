@@ -18,6 +18,7 @@ from py_agent_tools import (
 )
 
 TWO_ITEMS = 2
+THREE_ITEMS = 3
 
 
 class ShellParserTests(unittest.TestCase):
@@ -30,14 +31,14 @@ class ShellParserTests(unittest.TestCase):
 
     def test_parse_simple_command(self) -> None:
         program = parse_shell_command("echo hello")
-        pipeline = program.pipelines[0]
+        pipeline = program.steps[0].pipeline
         command = pipeline.commands[0]
         assert command.program == "echo"
         assert command.arguments == ("hello",)
 
     def test_parse_pipeline(self) -> None:
         program = parse_shell_command("echo hi | cat")
-        pipeline = program.pipelines[0]
+        pipeline = program.steps[0].pipeline
         assert len(pipeline.commands) == TWO_ITEMS
         assert pipeline.commands[0].program == "echo"
         assert pipeline.commands[1].program == "cat"
@@ -48,12 +49,12 @@ class ShellParserTests(unittest.TestCase):
             features=ShellSubsetFeatures(allow_stderr_pipe=True),
         )
         program = parser.parse("build |& tee build.log")
-        pipeline = program.pipelines[0]
+        pipeline = program.steps[0].pipeline
         assert pipeline.pipe_stderr is True
 
     def test_parse_env_assignments_and_redirections(self) -> None:
         program = parse_shell_command("FOO=bar echo hi > out.txt")
-        command = program.pipelines[0].commands[0]
+        command = program.steps[0].pipeline.commands[0]
         assert command.env_assignments[0].name == "FOO"
         assert command.env_assignments[0].value == "bar"
         assert command.arguments == ("hi",)
@@ -62,14 +63,23 @@ class ShellParserTests(unittest.TestCase):
 
     def test_parse_multiple_pipelines_with_separator(self) -> None:
         program = parse_shell_command("echo a ; echo b")
-        assert len(program.pipelines) == TWO_ITEMS
-        assert program.pipelines[0].commands[0].arguments == ("a",)
-        assert program.pipelines[1].commands[0].arguments == ("b",)
+        assert len(program.steps) == TWO_ITEMS
+        assert program.steps[0].condition == "always"
+        assert program.steps[1].condition == "always"
+        assert program.steps[0].pipeline.commands[0].arguments == ("a",)
+        assert program.steps[1].pipeline.commands[0].arguments == ("b",)
 
-    def test_parse_rejects_unsupported_operator(self) -> None:
+    def test_parse_conditional_operators(self) -> None:
+        program = parse_shell_command("echo a && echo b || echo c")
+        assert len(program.steps) == THREE_ITEMS
+        assert program.steps[0].condition == "always"
+        assert program.steps[1].condition == "on_success"
+        assert program.steps[2].condition == "on_failure"
+
+    def test_parse_rejects_unsupported_single_ampersand(self) -> None:
         failed = False
         try:
-            parse_shell_command("echo a && echo b")
+            parse_shell_command("echo a & echo b")
         except ShellParseError:
             failed = True
         assert failed is True

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 type RedirectOperator = Literal["<", ">", ">>"]
+type PipelineCondition = Literal["always", "on_success", "on_failure"]
 _ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -89,6 +90,12 @@ class ShellSubsetError(ValueError):
         message = "Redirections are disabled by shell-subset features."
         return cls(message)
 
+    @classmethod
+    def invalid_pipeline_condition(cls, condition: str) -> ShellSubsetError:
+        """Create invalid-pipeline-condition error."""
+        message = f"Invalid pipeline condition: {condition}"
+        return cls(message)
+
 
 @dataclass(slots=True, frozen=True)
 class ShellSubsetFeatures:
@@ -152,7 +159,15 @@ class ShellPipeline:
 class ShellProgram:
     """Root AST node for the supported subset."""
 
-    pipelines: tuple[ShellPipeline, ...]
+    steps: tuple[ShellPipelineStep, ...]
+
+
+@dataclass(slots=True, frozen=True)
+class ShellPipelineStep:
+    """Pipeline plus condition controlling whether it should run."""
+
+    pipeline: ShellPipeline
+    condition: PipelineCondition = "always"
 
 
 def validate_shell_program(
@@ -164,14 +179,16 @@ def validate_shell_program(
     """Validate program shape against configured feature switches and limits."""
     active_features = features or ShellSubsetFeatures()
     active_limits = limits or ShellLimits()
-    pipeline_count = len(program.pipelines)
+    pipeline_count = len(program.steps)
     if pipeline_count == 0:
         raise ShellSubsetError.empty_program()
     if pipeline_count > active_limits.max_pipelines:
         raise ShellSubsetError.pipeline_count_exceeded()
-    for pipeline in program.pipelines:
+    for step in program.steps:
+        if step.condition not in {"always", "on_success", "on_failure"}:
+            raise ShellSubsetError.invalid_pipeline_condition(step.condition)
         _validate_pipeline(
-            pipeline,
+            step.pipeline,
             features=active_features,
             limits=active_limits,
         )

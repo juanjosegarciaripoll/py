@@ -145,7 +145,7 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
    - Added composable parser stages with `ShlexTokenizer` and `ShellSubsetParser` to produce validated shell-subset AST programs.
    - Added shell runtime primitives for cancellation tokens and structured execution event emission.
    - Added extensible shell command registry primitives for modular command-handler registration.
-   - Replaced full-shell invocation in `bash` with parsed subset execution (including pipeline/separator handling and policy-aware redirection checks).
+   - Replaced full-shell invocation in `bash` with parsed subset execution (including `;`, `&&`, `||`, pipeline handling, and policy-aware redirection checks).
 3. Integrate permissions into read, write, and bash tools.
    Status: Completed.
    - Read/write permissions are enforced through `ToolPermissionPolicy` and allowed-root confinement.

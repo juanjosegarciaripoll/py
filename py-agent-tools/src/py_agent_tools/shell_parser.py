@@ -7,9 +7,11 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from .shell_subset import (
+    PipelineCondition,
     ShellEnvAssignment,
     ShellLimits,
     ShellPipeline,
+    ShellPipelineStep,
     ShellProgram,
     ShellRedirection,
     ShellSimpleCommand,
@@ -21,8 +23,10 @@ from .shell_subset import (
 _REDIRECT_OPERATORS = {"<", ">", ">>"}
 _PIPE_OPERATORS = {"|", "|&"}
 _PIPELINE_SEPARATORS = {";"}
-_CONTROL_OPERATORS = {"&&", "||", "&"}
-_DELIMITERS = _REDIRECT_OPERATORS | _PIPE_OPERATORS | _PIPELINE_SEPARATORS
+_CONDITIONAL_OPERATORS = {"&&", "||"}
+_UNSUPPORTED_CONTROL_OPERATORS = {"&"}
+_PIPELINE_CONNECTORS = _PIPELINE_SEPARATORS | _CONDITIONAL_OPERATORS
+_DELIMITERS = _REDIRECT_OPERATORS | _PIPE_OPERATORS | _PIPELINE_CONNECTORS
 type RedirectOperator = Literal["<", ">", ">>"]
 
 
@@ -146,17 +150,22 @@ class ShellSubsetParser:
         if not tokens:
             raise ShellParseError.empty_input()
         cursor = _TokenCursor(tokens=tokens)
-        pipelines: list[ShellPipeline] = []
+        steps: list[ShellPipelineStep] = []
+        next_condition: PipelineCondition = "always"
         while not cursor.done:
-            pipelines.append(_parse_pipeline(cursor))
+            steps.append(
+                ShellPipelineStep(
+                    pipeline=_parse_pipeline(cursor),
+                    condition=next_condition,
+                )
+            )
             if cursor.done:
                 break
-            separator = cursor.pop()
-            if separator != ";":
-                raise ShellParseError.trailing_separator(separator)
+            connector = cursor.pop()
+            next_condition = _parse_connector_condition(connector)
             if cursor.done:
-                raise ShellParseError.trailing_separator(separator)
-        program = ShellProgram(pipelines=tuple(pipelines))
+                raise ShellParseError.trailing_separator(connector)
+        program = ShellProgram(steps=tuple(steps))
         validate_shell_program(
             program,
             features=self.features,
@@ -195,9 +204,9 @@ def _parse_simple_command(cursor: _TokenCursor) -> ShellSimpleCommand:
     redirections: list[ShellRedirection] = []
     while not cursor.done:
         token = cursor.peek()
-        if token in _CONTROL_OPERATORS:
+        if token in _UNSUPPORTED_CONTROL_OPERATORS:
             raise ShellParseError.unsupported_operator(token)
-        if token in _PIPE_OPERATORS or token in _PIPELINE_SEPARATORS:
+        if token in _PIPE_OPERATORS or token in _PIPELINE_CONNECTORS:
             break
         if token in _REDIRECT_OPERATORS:
             redirections.append(_parse_redirection(cursor))
@@ -226,9 +235,23 @@ def _parse_redirection(cursor: _TokenCursor) -> ShellRedirection:
     if cursor.done:
         raise ShellParseError.missing_redirection_target(operator)
     target = cursor.pop()
-    if target in _DELIMITERS or target in _CONTROL_OPERATORS:
+    if target in _DELIMITERS or target in _UNSUPPORTED_CONTROL_OPERATORS:
         raise ShellParseError.invalid_redirection_target(target)
     return ShellRedirection(operator=operator, target=target)
+
+
+def _parse_connector_condition(token: str) -> PipelineCondition:
+    match token:
+        case ";":
+            return "always"
+        case "&&":
+            return "on_success"
+        case "||":
+            return "on_failure"
+        case "&":
+            raise ShellParseError.unsupported_operator(token)
+        case _:
+            raise ShellParseError.trailing_separator(token)
 
 
 def _to_redirect_operator(value: str) -> RedirectOperator:

@@ -22,6 +22,7 @@ from .shell_runtime import (
     emit_shell_event,
 )
 from .shell_subset import (
+    PipelineCondition,
     ShellEnvAssignment,
     ShellPipeline,
     ShellProgram,
@@ -361,10 +362,11 @@ class BuiltinToolExecutor:
         stdout_chunks: list[str] = []
         stderr_chunks: list[str] = []
         last_exit_code = 0
-        pipelines = getattr(program, "pipelines", ())
-        for pipeline_index, pipeline in enumerate(pipelines):
+        for pipeline_index, step in enumerate(program.steps):
+            if not _should_run_pipeline(step.condition, last_exit_code):
+                continue
             result = self._execute_pipeline(
-                pipeline,
+                step.pipeline,
                 pipeline_index=pipeline_index,
                 cancellation=cancellation,
             )
@@ -373,8 +375,6 @@ class BuiltinToolExecutor:
             if result.stderr:
                 stderr_chunks.append(result.stderr)
             last_exit_code = result.exit_code
-            if last_exit_code != 0:
-                break
         return ShellCommandResult(
             stdout="".join(stdout_chunks),
             stderr="".join(stderr_chunks),
@@ -650,6 +650,16 @@ def _merge_command_environment(
 def _render_command_text(command: ShellSimpleCommand) -> str:
     parts: list[str] = [command.program, *command.arguments]
     return " ".join(parts)
+
+
+def _should_run_pipeline(condition: PipelineCondition, last_exit_code: int) -> bool:
+    match condition:
+        case "always":
+            return True
+        case "on_success":
+            return last_exit_code == 0
+        case "on_failure":
+            return last_exit_code != 0
 
 
 def _is_within_root(path: Path, root: Path) -> bool:

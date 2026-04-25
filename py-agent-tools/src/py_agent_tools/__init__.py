@@ -32,9 +32,11 @@ from .shell_runtime import (
     emit_shell_event,
 )
 from .shell_subset import (
+    PipelineCondition,
     ShellEnvAssignment,
     ShellLimits,
     ShellPipeline,
+    ShellPipelineStep,
     ShellProgram,
     ShellRedirection,
     ShellSimpleCommand,
@@ -47,6 +49,7 @@ __all__ = [
     "BashResult",
     "BuiltinToolExecutor",
     "GrepMatch",
+    "PipelineCondition",
     "ShellCancellationToken",
     "ShellCommandContext",
     "ShellCommandHandler",
@@ -61,6 +64,7 @@ __all__ = [
     "ShellLimits",
     "ShellParseError",
     "ShellPipeline",
+    "ShellPipelineStep",
     "ShellProgram",
     "ShellRedirection",
     "ShellRegistryError",
