@@ -9,6 +9,9 @@ from pathlib import Path
 from src.config import AppConfig, load_config
 
 TMP_DIR = Path(__file__).resolve().parent / ".tmp"
+CUSTOM_CONTEXT_WINDOW = 12_345
+CUSTOM_RESERVE_TOKENS = 500
+CUSTOM_KEEP_RECENT_TOKENS = 600
 
 
 class ConfigTests(unittest.TestCase):
@@ -25,7 +28,7 @@ class ConfigTests(unittest.TestCase):
         test_dir.mkdir(parents=True, exist_ok=True)
         path = test_dir / "agent.toml"
         path.write_text(
-            "[agent]\nmode='rpc'\nbranch='feature-z'\nsession_file='run.jsonl'\n",
+            "[agent]\nmode='rpc'\nbranch='feature-z'\nsession_file='run.jsonl'\ncontext_window_tokens=12345\n[agent.compaction]\nenabled=false\nreserve_tokens=500\nkeep_recent_tokens=600\n",
             encoding="utf-8",
         )
         try:
@@ -33,6 +36,10 @@ class ConfigTests(unittest.TestCase):
             assert config.mode == "rpc"
             assert config.branch == "feature-z"
             assert config.session_file == "run.jsonl"
+            assert config.context_window_tokens == CUSTOM_CONTEXT_WINDOW
+            assert config.compaction_enabled is False
+            assert config.compaction_reserve_tokens == CUSTOM_RESERVE_TOKENS
+            assert config.compaction_keep_recent_tokens == CUSTOM_KEEP_RECENT_TOKENS
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 

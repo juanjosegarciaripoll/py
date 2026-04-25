@@ -20,6 +20,9 @@ if TYPE_CHECKING:
 
 ARGPARSE_ERROR_EXIT_CODE = 2
 TMP_DIR = Path(__file__).resolve().parent / ".tmp"
+DEFAULT_CONTEXT_WINDOW_TOKENS = 272_000
+DEFAULT_RESERVE_TOKENS = 16_384
+DEFAULT_KEEP_RECENT_TOKENS = 20_000
 
 
 class CliTests(unittest.TestCase):
@@ -40,6 +43,10 @@ class CliTests(unittest.TestCase):
         assert config.session_file is None
         assert config.branch == "main"
         assert config.config_file is None
+        assert config.context_window_tokens == DEFAULT_CONTEXT_WINDOW_TOKENS
+        assert config.compaction_enabled is True
+        assert config.compaction_reserve_tokens == DEFAULT_RESERVE_TOKENS
+        assert config.compaction_keep_recent_tokens == DEFAULT_KEEP_RECENT_TOKENS
 
     def test_parse_args_with_session_options(self) -> None:
         config = parse_args(
@@ -113,6 +120,10 @@ class CliTests(unittest.TestCase):
                 session_file=None,
                 branch="main",
                 config_file=None,
+                context_window_tokens=272000,
+                compaction_enabled=True,
+                compaction_reserve_tokens=16384,
+                compaction_keep_recent_tokens=20000,
             ),
             stdin=io.StringIO(),
             stdout=stdout,
@@ -130,6 +141,10 @@ class CliTests(unittest.TestCase):
                 session_file=None,
                 branch="main",
                 config_file=None,
+                context_window_tokens=272000,
+                compaction_enabled=True,
+                compaction_reserve_tokens=16384,
+                compaction_keep_recent_tokens=20000,
             ),
             stdin=io.StringIO(),
             stdout=stdout,
@@ -151,6 +166,10 @@ class CliTests(unittest.TestCase):
                 session_file=None,
                 branch="main",
                 config_file=None,
+                context_window_tokens=272000,
+                compaction_enabled=True,
+                compaction_reserve_tokens=16384,
+                compaction_keep_recent_tokens=20000,
             ),
             stdin=stdin,
             stdout=stdout,
@@ -170,6 +189,10 @@ class CliTests(unittest.TestCase):
                 session_file=None,
                 branch="main",
                 config_file=None,
+                context_window_tokens=272000,
+                compaction_enabled=True,
+                compaction_reserve_tokens=16384,
+                compaction_keep_recent_tokens=20000,
             ),
             stdin=io.StringIO(""),
             stdout=stdout,
@@ -193,6 +216,10 @@ class CliTests(unittest.TestCase):
                 session_file=None,
                 branch="main",
                 config_file=None,
+                context_window_tokens=272000,
+                compaction_enabled=True,
+                compaction_reserve_tokens=16384,
+                compaction_keep_recent_tokens=20000,
             ),
             stdin=stdin,
             stdout=stdout,
@@ -223,6 +250,10 @@ class CliTests(unittest.TestCase):
                 session_file=None,
                 branch="main",
                 config_file=None,
+                context_window_tokens=272000,
+                compaction_enabled=True,
+                compaction_reserve_tokens=16384,
+                compaction_keep_recent_tokens=20000,
             ),
             stdin=stdin,
             stdout=stdout,
@@ -255,6 +286,10 @@ class CliTests(unittest.TestCase):
                         session_file=str(session_path),
                         branch="feature-x",
                         config_file=None,
+                        context_window_tokens=272000,
+                        compaction_enabled=True,
+                        compaction_reserve_tokens=16384,
+                        compaction_keep_recent_tokens=20000,
                     ),
                     stdin=io.StringIO(),
                     stdout=stdout,
@@ -302,6 +337,10 @@ class CliTests(unittest.TestCase):
                 session_file=None,
                 branch="branch-a",
                 config_file=None,
+                context_window_tokens=272000,
+                compaction_enabled=True,
+                compaction_reserve_tokens=16384,
+                compaction_keep_recent_tokens=20000,
             ),
             stdin=io.StringIO(),
             stdout=io.StringIO(),
@@ -313,6 +352,44 @@ class CliTests(unittest.TestCase):
         assert seen[0].mode == "print"
         assert seen[0].prompt == "hello"
         assert seen[0].branch == "branch-a"
+
+    def test_session_compaction_event_is_emitted(self) -> None:
+        app = CodingAgentApp()
+        seen: list[AppEvent] = []
+
+        def listener(event: AppEvent) -> None:
+            seen.append(event)
+
+        app.subscribe(listener)
+
+        test_dir = TMP_DIR / "cli-compaction-event"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        session_path = test_dir / "session.jsonl"
+        try:
+            for index in range(4):
+                app.run(
+                    RunConfig(
+                        mode="print",
+                        prompt=f"prompt-{index} " + ("x" * 120),
+                        session_file=str(session_path),
+                        branch="main",
+                        config_file=None,
+                        context_window_tokens=200,
+                        compaction_enabled=True,
+                        compaction_reserve_tokens=40,
+                        compaction_keep_recent_tokens=40,
+                    ),
+                    stdin=io.StringIO(),
+                    stdout=io.StringIO(),
+                )
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+        compacted = [event for event in seen if event.type == "session_compacted"]
+        assert compacted
+        assert compacted[-1].tokens_before is not None
+        assert compacted[-1].tokens_after is not None
 
 
 if __name__ == "__main__":

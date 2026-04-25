@@ -8,14 +8,17 @@ from .cli import (
     main,
     parse_args,
 )
+from .compaction import CompactionSettings
 from .config import AppConfig, load_config
 from .extensions import AppEvent, EventBus, EventListener
-from .session import SessionRecord, SessionStore
+from .session import CompactionRecord, SessionRecord, SessionStore
 
 __all__ = [
     "AppConfig",
     "AppEvent",
     "CodingAgentApp",
+    "CompactionRecord",
+    "CompactionSettings",
     "EventBus",
     "EventListener",
     "ExecutionMode",

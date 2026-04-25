@@ -8,9 +8,11 @@ import unittest
 from pathlib import Path
 
 from src import session
-from src.session import SessionRecord, SessionStore
+from src.compaction import CompactionSettings
+from src.session import CompactionRecord, SessionRecord, SessionStore
 
 TMP_DIR = Path(__file__).resolve().parent / ".tmp"
+TOTAL_INTERACTIONS = 10
 
 
 class SessionTests(unittest.TestCase):
@@ -18,6 +20,7 @@ class SessionTests(unittest.TestCase):
 
     def test_session_record_to_from_json(self) -> None:
         record = SessionRecord(
+            id="id-1",
             timestamp_ms=1,
             branch="main",
             mode="print",
@@ -25,12 +28,32 @@ class SessionTests(unittest.TestCase):
             response="Echo: hello",
         )
         payload = record.to_json()
-        parsed = SessionRecord.from_json(payload)
+        parsed = SessionRecord.from_json(payload, fallback_id="fallback")
         assert parsed == record
 
     def test_session_record_from_json_invalid_payload(self) -> None:
-        assert SessionRecord.from_json({"timestamp_ms": "bad"}) is None
-        assert SessionRecord.from_json({"timestamp_ms": 1, "branch": 1}) is None
+        assert (
+            SessionRecord.from_json({"timestamp_ms": "bad"}, fallback_id="x")
+            is None
+        )
+        assert (
+            SessionRecord.from_json({"timestamp_ms": 1, "branch": 1}, fallback_id="x")
+            is None
+        )
+
+    def test_compaction_record_to_from_json(self) -> None:
+        record = CompactionRecord(
+            id="cmp-1",
+            timestamp_ms=2,
+            branch="main",
+            summary="summary",
+            first_kept_id="id-9",
+            tokens_before=100,
+            tokens_after=40,
+        )
+        payload = record.to_json()
+        parsed = CompactionRecord.from_json(payload, fallback_id="fallback")
+        assert parsed == record
 
     def test_append_and_load_with_branch_filter(self) -> None:
         test_dir = TMP_DIR / "session-branch"
@@ -102,6 +125,36 @@ class SessionTests(unittest.TestCase):
             loaded = store.load()
             assert len(loaded) == 1
             assert loaded[0].prompt == "hello"
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_compact_if_needed_appends_compaction_and_applies_boundary(self) -> None:
+        test_dir = TMP_DIR / "session-compaction"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            path = test_dir / "session.jsonl"
+            store = SessionStore(path=path, branch="main")
+            for number in range(TOTAL_INTERACTIONS):
+                prompt = f"task-{number} " + ("x" * 120)
+                store.append_interaction(mode="print", prompt=prompt, response="ok")
+
+            compaction = store.compact_if_needed(
+                context_window_tokens=200,
+                settings=CompactionSettings(
+                    enabled=True,
+                    reserve_tokens=40,
+                    keep_recent_tokens=40,
+                ),
+            )
+            assert compaction is not None
+
+            entries = store.load_entries()
+            assert any(isinstance(entry, CompactionRecord) for entry in entries)
+
+            loaded = store.load()
+            assert len(loaded) < TOTAL_INTERACTIONS
+            assert loaded[0].id == compaction.first_kept_id
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 

@@ -13,12 +13,16 @@ class AppEvent:
     """Event emitted by the coding-agent runtime."""
 
     type: EventType
-    mode: str
-    prompt: str
-    response: str
-    branch: str
-    session_file: str | None
     timestamp_ms: int
+    mode: str | None = None
+    prompt: str | None = None
+    response: str | None = None
+    branch: str | None = None
+    session_file: str | None = None
+    summary: str | None = None
+    first_kept_id: str | None = None
+    tokens_before: int | None = None
+    tokens_after: int | None = None
 
 
 type EventListener = Callable[[AppEvent], None]

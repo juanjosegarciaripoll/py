@@ -9,9 +9,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TextIO, cast
 
+from .compaction import CompactionSettings
 from .config import AppConfig, load_config
 from .extensions import AppEvent, EventBus, EventListener
-from .session import SessionStore, timestamp_ms
+from .session import CompactionRecord, SessionStore, timestamp_ms
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -41,6 +42,10 @@ class RunConfig:
     session_file: str | None
     branch: str
     config_file: str | None
+    context_window_tokens: int = 272_000
+    compaction_enabled: bool = True
+    compaction_reserve_tokens: int = 16_384
+    compaction_keep_recent_tokens: int = 20_000
 
 
 @dataclass(slots=True)
@@ -48,6 +53,14 @@ class _InteractionPayload:
     mode: str
     prompt: str
     response: str
+
+
+@dataclass(slots=True)
+class _PersistenceContext:
+    branch: str
+    session_file: str | None
+    context_window_tokens: int
+    compaction_settings: CompactionSettings
 
 
 def build_parser(*, defaults: AppConfig | None = None) -> argparse.ArgumentParser:
@@ -107,6 +120,10 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
         session_file=session_file,
         branch=branch,
         config_file=config_file,
+        context_window_tokens=defaults.context_window_tokens,
+        compaction_enabled=defaults.compaction_enabled,
+        compaction_reserve_tokens=defaults.compaction_reserve_tokens,
+        compaction_keep_recent_tokens=defaults.compaction_keep_recent_tokens,
     )
 
 
@@ -136,38 +153,45 @@ class CodingAgentApp:
     ) -> int:
         """Run one mode and return process exit code."""
         store = self._build_store(config)
+        compaction_settings = CompactionSettings(
+            enabled=config.compaction_enabled,
+            reserve_tokens=config.compaction_reserve_tokens,
+            keep_recent_tokens=config.compaction_keep_recent_tokens,
+        )
+        persistence = _PersistenceContext(
+            branch=config.branch,
+            session_file=config.session_file,
+            context_window_tokens=config.context_window_tokens,
+            compaction_settings=compaction_settings,
+        )
         match config.mode:
             case "interactive":
                 return self._run_interactive(
                     stdout=stdout,
                     stdin=stdin,
                     store=store,
-                    branch=config.branch,
-                    session_file=config.session_file,
+                    persistence=persistence,
                 )
             case "print":
                 return self._run_print(
                     prompt=config.prompt,
                     stdout=stdout,
                     store=store,
-                    branch=config.branch,
-                    session_file=config.session_file,
+                    persistence=persistence,
                 )
             case "json":
                 return self._run_json(
                     prompt=config.prompt,
                     stdout=stdout,
                     store=store,
-                    branch=config.branch,
-                    session_file=config.session_file,
+                    persistence=persistence,
                 )
             case "rpc":
                 return self._run_rpc(
                     stdout=stdout,
                     stdin=stdin,
                     store=store,
-                    branch=config.branch,
-                    session_file=config.session_file,
+                    persistence=persistence,
                 )
 
     def _build_store(self, config: RunConfig) -> SessionStore | None:
@@ -181,8 +205,7 @@ class CodingAgentApp:
         stdout: TextIO,
         stdin: TextIO,
         store: SessionStore | None,
-        branch: str,
-        session_file: str | None,
+        persistence: _PersistenceContext,
     ) -> int:
         stdout.write("Interactive mode. Type 'exit' to quit.\n")
         while True:
@@ -197,8 +220,7 @@ class CodingAgentApp:
             stdout.write(f"{response}\n")
             self._persist_interaction(
                 store=store,
-                branch=branch,
-                session_file=session_file,
+                persistence=persistence,
                 payload=_InteractionPayload(
                     mode="interactive",
                     prompt=prompt,
@@ -212,15 +234,13 @@ class CodingAgentApp:
         prompt: str,
         stdout: TextIO,
         store: SessionStore | None,
-        branch: str,
-        session_file: str | None,
+        persistence: _PersistenceContext,
     ) -> int:
         response = self.respond(prompt)
         stdout.write(f"{response}\n")
         self._persist_interaction(
             store=store,
-            branch=branch,
-            session_file=session_file,
+            persistence=persistence,
             payload=_InteractionPayload(
                 mode="print",
                 prompt=prompt,
@@ -235,8 +255,7 @@ class CodingAgentApp:
         prompt: str,
         stdout: TextIO,
         store: SessionStore | None,
-        branch: str,
-        session_file: str | None,
+        persistence: _PersistenceContext,
     ) -> int:
         response = self.respond(prompt)
         payload = {
@@ -247,8 +266,7 @@ class CodingAgentApp:
         stdout.write(json.dumps(payload) + "\n")
         self._persist_interaction(
             store=store,
-            branch=branch,
-            session_file=session_file,
+            persistence=persistence,
             payload=_InteractionPayload(
                 mode="json",
                 prompt=prompt,
@@ -263,8 +281,7 @@ class CodingAgentApp:
         stdout: TextIO,
         stdin: TextIO,
         store: SessionStore | None,
-        branch: str,
-        session_file: str | None,
+        persistence: _PersistenceContext,
     ) -> int:
         for line in stdin:
             text = line.strip()
@@ -303,8 +320,7 @@ class CodingAgentApp:
             stdout.write(json.dumps(response) + "\n")
             self._persist_interaction(
                 store=store,
-                branch=branch,
-                session_file=session_file,
+                persistence=persistence,
                 payload=_InteractionPayload(
                     mode="rpc",
                     prompt=prompt_value,
@@ -317,8 +333,7 @@ class CodingAgentApp:
         self,
         *,
         store: SessionStore | None,
-        branch: str,
-        session_file: str | None,
+        persistence: _PersistenceContext,
         payload: _InteractionPayload,
     ) -> None:
         event = AppEvent(
@@ -326,8 +341,8 @@ class CodingAgentApp:
             mode=payload.mode,
             prompt=payload.prompt,
             response=payload.response,
-            branch=branch,
-            session_file=session_file,
+            branch=persistence.branch,
+            session_file=persistence.session_file,
             timestamp_ms=timestamp_ms(),
         )
         self._event_bus.emit(event)
@@ -338,6 +353,36 @@ class CodingAgentApp:
             prompt=payload.prompt,
             response=payload.response,
         )
+        compaction = store.compact_if_needed(
+            context_window_tokens=persistence.context_window_tokens,
+            settings=persistence.compaction_settings,
+        )
+        if compaction is None:
+            return
+        self._emit_compaction_event(
+            branch=persistence.branch,
+            session_file=persistence.session_file,
+            compaction=compaction,
+        )
+
+    def _emit_compaction_event(
+        self,
+        *,
+        branch: str,
+        session_file: str | None,
+        compaction: CompactionRecord,
+    ) -> None:
+        event = AppEvent(
+            type="session_compacted",
+            branch=branch,
+            session_file=session_file,
+            timestamp_ms=compaction.timestamp_ms,
+            summary=compaction.summary,
+            first_kept_id=compaction.first_kept_id,
+            tokens_before=compaction.tokens_before,
+            tokens_after=compaction.tokens_after,
+        )
+        self._event_bus.emit(event)
 
 
 def main(argv: list[str] | None = None) -> int:
