@@ -10,7 +10,7 @@ dependencies = []
 members = ["llm-providers", "py-agent", "py-coding-agent"]
 
 [dependency-groups]
-dev = ["ruff", "basedpyright", "mypy", "httpx", "pydantic>=2.0,<3.0"]
+dev = ["ruff", "basedpyright", "mypy", "coverage[toml]>=7.0", "httpx", "pydantic>=2.0,<3.0"]
 
 [tool.ruff]
 line-length = 88

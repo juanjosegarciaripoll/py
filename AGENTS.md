@@ -16,6 +16,7 @@ This project aims to recreate the Pi agentic framework using standard Python lib
 - Libraries and software handled using "uv"
 - Python programs are invoked using "uv run"
 - Unit testing with Python unittests (not pytest)
+- Unit tests are run through coverage.py to measure coverage
 - Project structured as workspaces
 - CLI tool installable as standalone program
 - Configuration based on TOML files
@@ -31,7 +32,8 @@ This project aims to recreate the Pi agentic framework using standard Python lib
 - Use --no-cache when calling uv
 - Compact code, with minimal redundancies
 - Each phase involves creating the tests for all components, aiming for 100% coverage
-- A phase is not considered complete untill all unit tests pass, all type checkers pass and all linting errors are corrected.
+- Test runs for modified components use coverage.py, for example `uv run --no-cache coverage run -m unittest discover -s <component>/tests -v` followed by `uv run --no-cache coverage report --fail-under=100`.
+- A phase is not considered complete untill all unit tests pass under coverage, the coverage report passes the configured threshold, all type checkers pass and all linting errors are corrected.
 - You are not allowed to use --unsafe-fixes in ruff.
 - Avoid using cast() when possible.
 - Tests should focus on public APIs for libraries, avoiding private methods.

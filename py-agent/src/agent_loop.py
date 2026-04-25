@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .types import (
     AbortSignal,
@@ -295,7 +295,7 @@ async def _run_loop(  # noqa: PLR0913
     await _emit(emit, AgentEventAgentEnd(messages=new_messages))
 
 
-async def _stream_assistant_response(  # noqa: C901
+async def _stream_assistant_response(  # noqa: C901, PLR0912
     context: AgentContext,
     config: AgentLoopConfig,
     emit: AgentEventSink,
@@ -321,7 +321,13 @@ async def _stream_assistant_response(  # noqa: C901
     if call_stream_fn is None:
         msg = "No stream function configured"
         raise ValueError(msg)
-    response = await call_stream_fn(config.model, llm_context, config)
+    resolved_api_key = config.api_key
+    if config.get_api_key is not None:
+        dynamic_api_key = await config.get_api_key(config.model.provider)
+        if dynamic_api_key is not None:
+            resolved_api_key = dynamic_api_key
+    stream_config = replace(config, api_key=resolved_api_key)
+    response = await call_stream_fn(config.model, llm_context, stream_config)
 
     partial_message: AssistantMessage | None = None
     added_partial = False
