@@ -9,7 +9,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TextIO, cast
 
-from .compaction import CompactionSettings
+from .compaction import (
+    CompactionSettings,
+    CompactionSummaryRequest,
+    CompactionThinkingLevel,
+    build_summary_request,
+)
 from .config import AppConfig, load_config
 from .extensions import (
     AppEvent,
@@ -18,7 +23,7 @@ from .extensions import (
     SessionBeforeCompactContext,
     SessionBeforeCompactHook,
 )
-from .session import CompactionRecord, SessionStore, timestamp_ms
+from .session import CompactionRecord, SessionRecord, SessionStore, timestamp_ms
 from .tools import (
     BashResult,
     BuiltinToolExecutor,
@@ -30,6 +35,8 @@ from .tui import has_textual_dependency, launch_tui_mode
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+type CompactionSummaryGenerator = Callable[[CompactionSummaryRequest], str]
 
 type ExecutionMode = Literal["interactive", "print", "json", "rpc", "tui"]
 MAX_OVERFLOW_RECOVERY_RETRIES = 1
@@ -70,6 +77,7 @@ class RunConfig:
     tool_allow_execute: bool = True
     tool_allowed_roots: tuple[str, ...] = ()
     skills_root: str = "skills"
+    compaction_thinking_level: CompactionThinkingLevel = "medium"
 
 
 @dataclass(slots=True)
@@ -85,6 +93,7 @@ class _PersistenceContext:
     session_file: str | None
     context_window_tokens: int
     compaction_settings: CompactionSettings
+    compaction_thinking_level: CompactionThinkingLevel
 
 
 def build_parser(*, defaults: AppConfig | None = None) -> argparse.ArgumentParser:
@@ -153,15 +162,22 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
         tool_allow_execute=defaults.tool_allow_execute,
         tool_allowed_roots=defaults.tool_allowed_roots,
         skills_root=defaults.skills_root,
+        compaction_thinking_level=defaults.compaction_thinking_level,
     )
 
 
 class CodingAgentApp:
     """Small execution harness with four user-facing modes."""
 
-    def __init__(self, *, event_bus: EventBus | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        event_bus: EventBus | None = None,
+        compaction_summary_generator: CompactionSummaryGenerator | None = None,
+    ) -> None:
         self._event_bus = event_bus or EventBus()
         self._tool_executor = BuiltinToolExecutor(cwd=Path.cwd())
+        self._compaction_summary_generator = compaction_summary_generator
 
     def subscribe(self, listener: EventListener) -> Callable[[], None]:
         """Subscribe to app events and return an unsubscribe callback."""
@@ -228,6 +244,7 @@ class CodingAgentApp:
             session_file=config.session_file,
             context_window_tokens=config.context_window_tokens,
             compaction_settings=compaction_settings,
+            compaction_thinking_level=config.compaction_thinking_level,
         )
         match config.mode:
             case "interactive":
@@ -690,6 +707,13 @@ class CodingAgentApp:
             if decision is None or decision.summary is None
             else decision.summary
         )
+        records = store.load()
+        summary = self._maybe_generate_compaction_summary(
+            summary=summary,
+            records=records,
+            kept_first_id=planned.first_kept_id,
+            persistence=persistence,
+        )
         first_kept_id = (
             planned.first_kept_id
             if decision is None or decision.first_kept_id is None
@@ -711,6 +735,34 @@ class CodingAgentApp:
             tokens_before=tokens_before,
             tokens_after=tokens_after,
         )
+
+    def _maybe_generate_compaction_summary(
+        self,
+        *,
+        summary: str,
+        records: list[SessionRecord],
+        kept_first_id: str,
+        persistence: _PersistenceContext,
+    ) -> str:
+        generator = self._compaction_summary_generator
+        if generator is None:
+            return summary
+        summarized_records, kept_records = _split_records_by_first_kept_id(
+            records=records,
+            first_kept_id=kept_first_id,
+        )
+        if not summarized_records or not kept_records:
+            return summary
+        request = build_summary_request(
+            summarized=summarized_records,
+            kept=kept_records,
+            keep_recent_tokens=persistence.compaction_settings.keep_recent_tokens,
+            thinking_level=persistence.compaction_thinking_level,
+        )
+        generated = generator(request).strip()
+        if generated:
+            return generated
+        return summary
 
     def _emit_compaction_event(
         self,
@@ -745,3 +797,14 @@ def _resolve_root_path(path_value: str) -> Path:
     if raw.is_absolute():
         return raw.resolve()
     return (Path.cwd() / raw).resolve()
+
+
+def _split_records_by_first_kept_id(
+    *,
+    records: list[SessionRecord],
+    first_kept_id: str,
+) -> tuple[list[SessionRecord], list[SessionRecord]]:
+    for index, record in enumerate(records):
+        if record.id == first_kept_id:
+            return (records[:index], records[index:])
+    return ([], [])

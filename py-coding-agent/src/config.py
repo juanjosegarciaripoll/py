@@ -10,6 +10,7 @@ from typing import Literal, cast
 
 type JsonObject = dict[str, object]
 type ExecutionMode = Literal["interactive", "print", "json", "rpc", "tui"]
+type CompactionThinkingLevel = Literal["low", "medium", "high"]
 
 
 @dataclass(slots=True)
@@ -23,6 +24,7 @@ class AppConfig:
     compaction_enabled: bool = True
     compaction_reserve_tokens: int = 16_384
     compaction_keep_recent_tokens: int = 20_000
+    compaction_thinking_level: CompactionThinkingLevel = "medium"
     tool_allow_read: bool = True
     tool_allow_write: bool = True
     tool_allow_execute: bool = True
@@ -55,6 +57,7 @@ def load_config(path: Path | None) -> AppConfig:
         compaction_enabled,
         compaction_reserve_tokens,
         compaction_keep_recent_tokens,
+        compaction_thinking_level,
     ) = _parse_compaction(agent, defaults)
     (
         tool_allow_read,
@@ -71,6 +74,7 @@ def load_config(path: Path | None) -> AppConfig:
         compaction_enabled=compaction_enabled,
         compaction_reserve_tokens=compaction_reserve_tokens,
         compaction_keep_recent_tokens=compaction_keep_recent_tokens,
+        compaction_thinking_level=compaction_thinking_level,
         tool_allow_read=tool_allow_read,
         tool_allow_write=tool_allow_write,
         tool_allow_execute=tool_allow_execute,
@@ -82,11 +86,12 @@ def load_config(path: Path | None) -> AppConfig:
 def _parse_compaction(
     agent: JsonObject,
     defaults: AppConfig,
-) -> tuple[bool, int, int]:
+) -> tuple[bool, int, int, CompactionThinkingLevel]:
     compaction = _as_str_object_dict(agent.get("compaction"))
     enabled = defaults.compaction_enabled
     reserve_tokens = defaults.compaction_reserve_tokens
     keep_recent_tokens = defaults.compaction_keep_recent_tokens
+    thinking_level = defaults.compaction_thinking_level
     if compaction is not None:
         enabled = _as_bool(compaction.get("enabled"), default=enabled)
         reserve_tokens = _as_positive_int(
@@ -97,7 +102,11 @@ def _parse_compaction(
             compaction.get("keep_recent_tokens"),
             keep_recent_tokens,
         )
-    return (enabled, reserve_tokens, keep_recent_tokens)
+        thinking_level = _as_compaction_thinking_level(
+            compaction.get("thinking_level"),
+            default=thinking_level,
+        )
+    return (enabled, reserve_tokens, keep_recent_tokens, thinking_level)
 
 
 def _parse_tools(
@@ -229,3 +238,13 @@ def _as_tuple_of_str(value: object) -> tuple[str, ...] | None:
             return None
         result.append(item)
     return tuple(result)
+
+
+def _as_compaction_thinking_level(
+    value: object,
+    *,
+    default: CompactionThinkingLevel,
+) -> CompactionThinkingLevel:
+    if value in {"low", "medium", "high"}:
+        return cast("CompactionThinkingLevel", value)
+    return default

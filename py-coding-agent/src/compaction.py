@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 if TYPE_CHECKING:
     from .session import SessionRecord
@@ -32,6 +32,24 @@ class CompactionResult:
     first_kept_id: str
     tokens_before: int
     tokens_after: int
+
+
+type CompactionThinkingLevel = Literal["low", "medium", "high"]
+
+
+@dataclass(slots=True, frozen=True)
+class CompactionSummaryRequest:
+    """Structured request for optional LLM-driven compaction summaries."""
+
+    goal: str
+    constraints_and_preferences: list[str]
+    progress_done: list[str]
+    progress_in_progress: list[str]
+    progress_blocked: list[str]
+    key_decisions: list[str]
+    next_steps: list[str]
+    critical_context: list[str]
+    thinking_level: CompactionThinkingLevel = "medium"
 
 
 def estimate_text_tokens(text: str) -> int:
@@ -196,6 +214,100 @@ def build_structured_summary(
         ]
     )
 
+    return "\n".join(lines)
+
+
+def build_summary_request(
+    *,
+    summarized: list[SessionRecord],
+    kept: list[SessionRecord],
+    keep_recent_tokens: int,
+    thinking_level: CompactionThinkingLevel = "medium",
+) -> CompactionSummaryRequest:
+    """Build structured summary request fields for optional LLM summarization."""
+    last_prompt = summarized[-1].prompt.strip() if summarized else "(none)"
+    done_items = _sample_lines([record.prompt for record in summarized], limit=5)
+    progress_hint = kept[0].prompt.strip() if kept else "(none)"
+    read_files, modified_files = _extract_file_tracking(summarized)
+    oversized_prefix = _extract_oversized_turn_prefix(
+        kept=kept,
+        keep_recent_tokens=keep_recent_tokens,
+    )
+    critical_context = [
+        "Preserve exact file names, commands, and errors from kept turns.",
+        f"<read-files>: {_format_file_tracking(read_files)}",
+        f"<modified-files>: {_format_file_tracking(modified_files)}",
+    ]
+    if oversized_prefix is not None:
+        critical_context.append(f"Oversized turn prefix: {oversized_prefix}")
+    return CompactionSummaryRequest(
+        goal=last_prompt or "(none)",
+        constraints_and_preferences=["(none)"],
+        progress_done=done_items or ["(none)"],
+        progress_in_progress=[progress_hint or "(none)"],
+        progress_blocked=["(none)"],
+        key_decisions=[
+            "Older turns were summarized to preserve recent context budget."
+        ],
+        next_steps=["Continue from the most recent kept interactions."],
+        critical_context=critical_context,
+        thinking_level=thinking_level,
+    )
+
+
+def render_summary_from_request(request: CompactionSummaryRequest) -> str:
+    """Render one structured summary string from request fields."""
+    lines = [
+        "## Goal",
+        request.goal,
+        "",
+        "## Constraints & Preferences",
+    ]
+    lines.extend(f"- {item}" for item in request.constraints_and_preferences)
+    lines.extend(
+        [
+            "",
+            "## Progress",
+            "### Done",
+        ]
+    )
+    lines.extend(f"- [x] {item}" for item in request.progress_done)
+    lines.extend(
+        [
+            "",
+            "### In Progress",
+        ]
+    )
+    lines.extend(f"- [ ] {item}" for item in request.progress_in_progress)
+    lines.extend(
+        [
+            "",
+            "### Blocked",
+        ]
+    )
+    lines.extend(f"- {item}" for item in request.progress_blocked)
+    lines.extend(
+        [
+            "",
+            "## Key Decisions",
+        ]
+    )
+    lines.extend(f"- {item}" for item in request.key_decisions)
+    lines.extend(
+        [
+            "",
+            "## Next Steps",
+        ]
+    )
+    for index, step in enumerate(request.next_steps, start=1):
+        lines.append(f"{index}. {step}")
+    lines.extend(
+        [
+            "",
+            "## Critical Context",
+        ]
+    )
+    lines.extend(f"- {item}" for item in request.critical_context)
     return "\n".join(lines)
 
 

@@ -25,6 +25,7 @@ from src.extensions import SessionBeforeCompactDecision
 from src.session import SessionStore
 
 if TYPE_CHECKING:
+    from src.compaction import CompactionSummaryRequest
     from src.extensions import AppEvent, SessionBeforeCompactContext
 
 ARGPARSE_ERROR_EXIT_CODE = 2
@@ -703,6 +704,50 @@ class CliTests(unittest.TestCase):
             latest = compactions[-1]
             assert latest["summary"] == "Manual checkpoint"
             assert latest["tokens_after"] == COMPACTION_OVERRIDE_TOKENS_AFTER
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_compaction_summary_generator_overrides_summary(self) -> None:
+        test_dir = TMP_DIR / "cli-compaction-generator"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        session_path = test_dir / "session.jsonl"
+        try:
+            seen_levels: list[str] = []
+
+            def generator(request: CompactionSummaryRequest) -> str:
+                seen_levels.append(request.thinking_level)
+                return "LLM Summary"
+
+            app = CodingAgentApp(compaction_summary_generator=generator)
+            for index in range(4):
+                app.run(
+                    RunConfig(
+                        mode="print",
+                        prompt=f"compact-{index} " + ("x" * 120),
+                        session_file=str(session_path),
+                        branch="main",
+                        config_file=None,
+                        context_window_tokens=200,
+                        compaction_enabled=True,
+                        compaction_reserve_tokens=40,
+                        compaction_keep_recent_tokens=40,
+                        compaction_thinking_level="high",
+                    ),
+                    stdin=io.StringIO(),
+                    stdout=io.StringIO(),
+                )
+            entries = session_path.read_text(encoding="utf-8").splitlines()
+            payloads = [cast("dict[str, object]", json.loads(line)) for line in entries]
+            compactions = [
+                payload
+                for payload in payloads
+                if payload.get("type") == "compaction"
+            ]
+            assert compactions
+            assert compactions[-1]["summary"] == "LLM Summary"
+            assert seen_levels
+            assert seen_levels[-1] == "high"
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 

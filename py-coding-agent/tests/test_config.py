@@ -19,6 +19,7 @@ TMP_DIR = Path(__file__).resolve().parent / ".tmp"
 CUSTOM_CONTEXT_WINDOW = 12_345
 CUSTOM_RESERVE_TOKENS = 500
 CUSTOM_KEEP_RECENT_TOKENS = 600
+CUSTOM_THINKING_LEVEL = "high"
 
 
 class ConfigTests(unittest.TestCase):
@@ -47,6 +48,7 @@ class ConfigTests(unittest.TestCase):
             assert config.compaction_enabled is False
             assert config.compaction_reserve_tokens == CUSTOM_RESERVE_TOKENS
             assert config.compaction_keep_recent_tokens == CUSTOM_KEEP_RECENT_TOKENS
+            assert config.compaction_thinking_level == "medium"
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 
@@ -168,6 +170,23 @@ class ConfigTests(unittest.TestCase):
     def test_default_skills_root_uses_dot_py_folder(self) -> None:
         config = AppConfig()
         assert config.skills_root == ".py/skills"
+
+    def test_load_config_reads_compaction_thinking_level(self) -> None:
+        test_dir = TMP_DIR / "config-compaction-thinking"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        path = test_dir / "agent.toml"
+        path.write_text(
+            "[agent]\n"
+            "[agent.compaction]\n"
+            "thinking_level='high'\n",
+            encoding="utf-8",
+        )
+        try:
+            config = load_config(path)
+            assert config.compaction_thinking_level == CUSTOM_THINKING_LEVEL
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

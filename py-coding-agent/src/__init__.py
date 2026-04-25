@@ -9,7 +9,12 @@ from .cli import (
     main,
     parse_args,
 )
-from .compaction import CompactionSettings
+from .compaction import (
+    CompactionSettings,
+    CompactionSummaryRequest,
+    CompactionThinkingLevel,
+    render_summary_from_request,
+)
 from .config import (
     AppConfig,
     default_config_path,
@@ -51,6 +56,8 @@ __all__ = [
     "CodingAgentApp",
     "CompactionRecord",
     "CompactionSettings",
+    "CompactionSummaryRequest",
+    "CompactionThinkingLevel",
     "ContextOverflowError",
     "EventBus",
     "EventListener",
@@ -78,5 +85,6 @@ __all__ = [
     "local_config_path",
     "main",
     "parse_args",
+    "render_summary_from_request",
     "resolve_config_path",
 ]
