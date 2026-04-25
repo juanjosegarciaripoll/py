@@ -2,6 +2,7 @@
 
 from .cli import (
     CodingAgentApp,
+    ContextOverflowError,
     ExecutionMode,
     RunConfig,
     build_parser,
@@ -50,6 +51,7 @@ __all__ = [
     "CodingAgentApp",
     "CompactionRecord",
     "CompactionSettings",
+    "ContextOverflowError",
     "EventBus",
     "EventListener",
     "ExecutionMode",

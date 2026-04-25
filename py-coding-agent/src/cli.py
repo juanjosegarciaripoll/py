@@ -32,6 +32,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 type ExecutionMode = Literal["interactive", "print", "json", "rpc", "tui"]
+MAX_OVERFLOW_RECOVERY_RETRIES = 1
+
+
+class ContextOverflowError(RuntimeError):
+    """Raised when model context is too large and requires compaction."""
 
 
 def _as_str_object_dict(value: object) -> dict[str, object] | None:
@@ -176,6 +181,33 @@ class CodingAgentApp:
             return f"Echo: {text}"
         return "Echo: (empty prompt)"
 
+    def _respond_with_overflow_recovery(
+        self,
+        *,
+        prompt: str,
+        store: SessionStore | None,
+        persistence: _PersistenceContext,
+    ) -> str:
+        attempts = 0
+        while True:
+            try:
+                return self.respond(prompt)
+            except ContextOverflowError:
+                if attempts >= MAX_OVERFLOW_RECOVERY_RETRIES or store is None:
+                    raise
+                compaction = self._compact_with_extensions(
+                    store=store,
+                    persistence=persistence,
+                )
+                if compaction is None:
+                    raise
+                self._emit_compaction_event(
+                    branch=persistence.branch,
+                    session_file=persistence.session_file,
+                    compaction=compaction,
+                )
+                attempts += 1
+
     def run(
         self,
         config: RunConfig,
@@ -278,7 +310,15 @@ class CodingAgentApp:
             prompt = line.strip()
             if prompt in {"exit", "quit"}:
                 return 0
-            response = self.respond(prompt)
+            try:
+                response = self._respond_with_overflow_recovery(
+                    prompt=prompt,
+                    store=store,
+                    persistence=persistence,
+                )
+            except ContextOverflowError:
+                stdout.write("Error: context_overflow\n")
+                continue
             stdout.write(f"{response}\n")
             self._persist_interaction(
                 store=store,
@@ -298,7 +338,15 @@ class CodingAgentApp:
         store: SessionStore | None,
         persistence: _PersistenceContext,
     ) -> int:
-        response = self.respond(prompt)
+        try:
+            response = self._respond_with_overflow_recovery(
+                prompt=prompt,
+                store=store,
+                persistence=persistence,
+            )
+        except ContextOverflowError:
+            stdout.write("Error: context_overflow\n")
+            return 1
         stdout.write(f"{response}\n")
         self._persist_interaction(
             store=store,
@@ -319,7 +367,15 @@ class CodingAgentApp:
         store: SessionStore | None,
         persistence: _PersistenceContext,
     ) -> int:
-        response = self.respond(prompt)
+        try:
+            response = self._respond_with_overflow_recovery(
+                prompt=prompt,
+                store=store,
+                persistence=persistence,
+            )
+        except ContextOverflowError:
+            stdout.write('{"error":"context_overflow"}\n')
+            return 1
         payload = {
             "mode": "json",
             "prompt": prompt,
@@ -435,7 +491,19 @@ class CodingAgentApp:
             stdout.write('{"error":"invalid_params"}\n')
             return
         request_id = request.get("id")
-        response_text = self.respond(prompt_value)
+        try:
+            response_text = self._respond_with_overflow_recovery(
+                prompt=prompt_value,
+                store=store,
+                persistence=persistence,
+            )
+        except ContextOverflowError:
+            error_response = {
+                "id": request_id,
+                "error": {"code": "context_overflow"},
+            }
+            stdout.write(json.dumps(error_response) + "\n")
+            return
         response = {
             "id": request_id,
             "result": {"response": response_text},

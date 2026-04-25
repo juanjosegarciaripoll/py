@@ -13,8 +13,16 @@ from typing import TYPE_CHECKING, cast
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src import session
-from src.cli import CodingAgentApp, RunConfig, build_parser, main, parse_args
+from src.cli import (
+    CodingAgentApp,
+    ContextOverflowError,
+    RunConfig,
+    build_parser,
+    main,
+    parse_args,
+)
 from src.extensions import SessionBeforeCompactDecision
+from src.session import SessionStore
 
 if TYPE_CHECKING:
     from src.extensions import AppEvent, SessionBeforeCompactContext
@@ -25,6 +33,8 @@ DEFAULT_CONTEXT_WINDOW_TOKENS = 272_000
 DEFAULT_RESERVE_TOKENS = 16_384
 DEFAULT_KEEP_RECENT_TOKENS = 20_000
 COMPACTION_OVERRIDE_TOKENS_AFTER = 77
+OVERFLOW_RECOVERY_CALLS = 2
+OVERFLOW_ERROR_MESSAGE = "overflow"
 
 
 class CliTests(unittest.TestCase):
@@ -344,8 +354,8 @@ class CliTests(unittest.TestCase):
             "id": "tool-4",
             "method": "tool",
             "params": {
-                "name": "write",
-                "arguments": {"path": "tool-note.txt", "content": "hello"},
+                "name": "find",
+                "arguments": {"pattern": "*.py", "base_path": "py-coding-agent/src"},
             },
         }
         stdin = io.StringIO(json.dumps(request) + "\n" + '{"method":"shutdown"}\n')
@@ -376,9 +386,9 @@ class CliTests(unittest.TestCase):
             prompt_text = tool_entries[-1].get("prompt")
             assert isinstance(prompt_text, str)
             prompt_payload = cast("dict[str, object]", json.loads(prompt_text))
-            assert prompt_payload["tool_name"] == "write"
+            assert prompt_payload["tool_name"] == "find"
             arguments = cast("dict[str, object]", prompt_payload["arguments"])
-            assert arguments["path"] == "tool-note.txt"
+            assert arguments["base_path"] == "py-coding-agent/src"
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 
@@ -695,6 +705,92 @@ class CliTests(unittest.TestCase):
             assert latest["tokens_after"] == COMPACTION_OVERRIDE_TOKENS_AFTER
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_print_mode_recovers_from_overflow_with_compaction_retry(self) -> None:
+        class OverflowThenOkApp(CodingAgentApp):
+            def __init__(self) -> None:
+                super().__init__()
+                self.calls = 0
+
+            def respond(self, prompt: str) -> str:
+                self.calls += 1
+                if self.calls == 1:
+                    raise ContextOverflowError(OVERFLOW_ERROR_MESSAGE)
+                return f"Echo: {prompt}"
+
+        test_dir = TMP_DIR / "cli-overflow-print-retry"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        session_path = test_dir / "session.jsonl"
+        try:
+            store = SessionStore(path=session_path, branch="main")
+            for index in range(4):
+                store.append_interaction(
+                    mode="print",
+                    prompt=f"seed-{index} " + ("x" * 360),
+                    response="ok",
+                )
+            app = OverflowThenOkApp()
+            stdout = io.StringIO()
+            exit_code = app.run(
+                RunConfig(
+                    mode="print",
+                    prompt="recovered",
+                    session_file=str(session_path),
+                    branch="main",
+                    config_file=None,
+                    context_window_tokens=200,
+                    compaction_enabled=True,
+                    compaction_reserve_tokens=40,
+                    compaction_keep_recent_tokens=40,
+                ),
+                stdin=io.StringIO(),
+                stdout=stdout,
+            )
+            assert exit_code == 0
+            assert app.calls == OVERFLOW_RECOVERY_CALLS
+            assert stdout.getvalue() == "Echo: recovered\n"
+            entries = session_path.read_text(encoding="utf-8").splitlines()
+            payloads = [cast("dict[str, object]", json.loads(line)) for line in entries]
+            assert any(payload.get("type") == "compaction" for payload in payloads)
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_rpc_prompt_returns_context_overflow_error_when_unrecoverable(self) -> None:
+        class AlwaysOverflowApp(CodingAgentApp):
+            def respond(self, prompt: str) -> str:
+                del prompt
+                raise ContextOverflowError(OVERFLOW_ERROR_MESSAGE)
+
+        app = AlwaysOverflowApp()
+        request = {
+            "id": "req-overflow",
+            "method": "prompt",
+            "params": {"prompt": "hello"},
+        }
+        stdin = io.StringIO(json.dumps(request) + "\n" + '{"method":"shutdown"}\n')
+        stdout = io.StringIO()
+        exit_code = app.run(
+            RunConfig(
+                mode="rpc",
+                prompt="",
+                session_file=None,
+                branch="main",
+                config_file=None,
+                context_window_tokens=272000,
+                compaction_enabled=True,
+                compaction_reserve_tokens=16384,
+                compaction_keep_recent_tokens=20000,
+            ),
+            stdin=stdin,
+            stdout=stdout,
+        )
+        assert exit_code == 0
+        lines = [line for line in stdout.getvalue().splitlines() if line]
+        response = cast("dict[str, object]", json.loads(lines[0]))
+        assert response["id"] == "req-overflow"
+        error = cast("dict[str, object]", response["error"])
+        assert error["code"] == "context_overflow"
 
 
 if __name__ == "__main__":
