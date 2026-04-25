@@ -9,6 +9,12 @@ from .builtin import (
     ToolPermissionPolicy,
     ToolSandboxPolicy,
 )
+from .shell_parser import (
+    ShellParseError,
+    ShellSubsetParser,
+    ShlexTokenizer,
+    parse_shell_command,
+)
 from .shell_subset import (
     ShellEnvAssignment,
     ShellLimits,
@@ -27,15 +33,19 @@ __all__ = [
     "GrepMatch",
     "ShellEnvAssignment",
     "ShellLimits",
+    "ShellParseError",
     "ShellPipeline",
     "ShellProgram",
     "ShellRedirection",
     "ShellSimpleCommand",
     "ShellSubsetError",
     "ShellSubsetFeatures",
+    "ShellSubsetParser",
+    "ShlexTokenizer",
     "ToolError",
     "ToolPermissionError",
     "ToolPermissionPolicy",
     "ToolSandboxPolicy",
+    "parse_shell_command",
     "validate_shell_program",
 ]
