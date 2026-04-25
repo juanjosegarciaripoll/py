@@ -127,23 +127,31 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
 **Status:** In progress
 
 1. Define permission system for read/write/execute policies.
-   Initial implementation completed:
+   Status: Completed.
    - Added `ToolPermissionPolicy` as an explicit read/write/execute policy object.
    - Wired `ToolSandboxPolicy` permission checks through the policy object while preserving existing flags for backward compatibility.
    - Added unit tests for allow/deny behavior and sandbox-policy permission projection.
 2. Implement safe bash interpreter as Python-based sh subset parser.
+   Status: In progress.
    Granular implementation plan:
-   - Define shell subset and typed AST nodes (commands, args, env assignments, redirections, pipelines).
-   - Implement parser stages as composable elements (tokenizer, parser, validator, planner).
-   - Add runtime cancellation/signal propagation model for execution events.
-   - Design extensibility hooks for adding new syntax elements/handlers safely.
-   Initial progress:
+   - [x] Define shell subset and typed AST nodes (commands, args, env assignments, redirections, pipelines).
+   - [x] Implement parser stages as composable elements (tokenizer, parser, validator, planner).
+   - [x] Add runtime cancellation/signal propagation model for execution events.
+   - [x] Design extensibility hooks for adding new syntax elements/handlers safely.
+   - [x] Integrate parser/registry/runtime path into `bash` execution with safe command parsing and redirection policy enforcement.
+   - [ ] Add execution safety limits (timeouts/output size/pipeline bounds enforcement at runtime) and finalize strict behavior docs.
+   Completed progress:
    - Added `shell_subset` AST models and structural validation helpers in `py-agent-tools`.
    - Added composable parser stages with `ShlexTokenizer` and `ShellSubsetParser` to produce validated shell-subset AST programs.
    - Added shell runtime primitives for cancellation tokens and structured execution event emission.
    - Added extensible shell command registry primitives for modular command-handler registration.
+   - Replaced full-shell invocation in `bash` with parsed subset execution (including pipeline/separator handling and policy-aware redirection checks).
 3. Integrate permissions into read, write, and bash tools.
+   Status: Completed.
+   - Read/write permissions are enforced through `ToolPermissionPolicy` and allowed-root confinement.
+   - Bash execution permission is enforced before execution, and redirections now enforce read/write path permissions.
 4. Add configuration options for permission policies.
+   Status: Not started.
 
 ### Phase 6: Integration and CLI Installation
 

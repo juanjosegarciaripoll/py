@@ -9,6 +9,27 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from .shell_parser import ShellParseError, parse_shell_command
+from .shell_registry import (
+    ShellCommandContext,
+    ShellCommandRegistry,
+    ShellCommandResult,
+    ShellRegistryError,
+)
+from .shell_runtime import (
+    ShellCancellationToken,
+    ShellExecutionEvent,
+    emit_shell_event,
+)
+from .shell_subset import (
+    ShellEnvAssignment,
+    ShellPipeline,
+    ShellProgram,
+    ShellRedirection,
+    ShellSimpleCommand,
+    ShellSubsetError,
+)
+
 type ToolName = Literal["read", "write", "edit", "bash", "find", "grep"]
 type PermissionName = Literal["read", "write", "execute"]
 
@@ -51,6 +72,12 @@ class ToolError(Exception):
         """Create unknown-tool error."""
         message = f"Unknown tool: {name}"
         return UnknownToolError(message)
+
+    @classmethod
+    def invalid_bash_command(cls, details: str) -> ToolError:
+        """Create invalid-bash-command error."""
+        message = f"Invalid bash command: {details}"
+        return cls(message)
 
 
 class UnknownToolError(ToolError):
@@ -197,9 +224,11 @@ class BuiltinToolExecutor:
         *,
         cwd: Path,
         policy: ToolSandboxPolicy | None = None,
+        shell_registry: ShellCommandRegistry | None = None,
     ) -> None:
         self._cwd = cwd.resolve()
         self._policy = policy or ToolSandboxPolicy.from_cwd(self._cwd)
+        self._shell_registry = shell_registry or _default_shell_registry()
 
     def execute(self, tool_name: str, arguments: dict[str, object]) -> object:
         """Execute a tool by name."""
@@ -262,20 +291,18 @@ class BuiltinToolExecutor:
         return {"path": str(target), "replacements": 1}
 
     def bash(self, command: str) -> BashResult:
-        """Execute a shell command in cwd."""
+        """Execute shell-subset command in cwd without invoking full shell parsing."""
         self._policy.ensure_execute_allowed()
-        shell_command = _build_shell_command(command)
-        completed = subprocess.run(  # noqa: S603
-            shell_command,
-            capture_output=True,
-            text=True,
-            check=False,
-            cwd=self._cwd,
-        )
+        try:
+            program = parse_shell_command(command)
+        except (ShellParseError, ShellSubsetError) as exc:
+            raise ToolError.invalid_bash_command(str(exc)) from exc
+        cancellation = ShellCancellationToken.create()
+        completed = self._execute_shell_program(program, cancellation=cancellation)
         return BashResult(
             stdout=completed.stdout,
             stderr=completed.stderr,
-            exit_code=completed.returncode,
+            exit_code=completed.exit_code,
         )
 
     def find(self, *, pattern: str, base_path: str = ".") -> list[str]:
@@ -325,6 +352,234 @@ class BuiltinToolExecutor:
             return candidate.resolve()
         return (self._cwd / candidate).resolve()
 
+    def _execute_shell_program(
+        self,
+        program: ShellProgram,
+        *,
+        cancellation: ShellCancellationToken,
+    ) -> ShellCommandResult:
+        stdout_chunks: list[str] = []
+        stderr_chunks: list[str] = []
+        last_exit_code = 0
+        pipelines = getattr(program, "pipelines", ())
+        for pipeline_index, pipeline in enumerate(pipelines):
+            result = self._execute_pipeline(
+                pipeline,
+                pipeline_index=pipeline_index,
+                cancellation=cancellation,
+            )
+            if result.stdout:
+                stdout_chunks.append(result.stdout)
+            if result.stderr:
+                stderr_chunks.append(result.stderr)
+            last_exit_code = result.exit_code
+            if last_exit_code != 0:
+                break
+        return ShellCommandResult(
+            stdout="".join(stdout_chunks),
+            stderr="".join(stderr_chunks),
+            exit_code=last_exit_code,
+        )
+
+    def _execute_pipeline(
+        self,
+        pipeline: ShellPipeline,
+        *,
+        pipeline_index: int,
+        cancellation: ShellCancellationToken,
+    ) -> ShellCommandResult:
+        pipeline_input = ""
+        pipeline_stderr: list[str] = []
+        last_result = ShellCommandResult()
+        for command_index, command in enumerate(pipeline.commands):
+            cancellation.ensure_active()
+            command_text = _render_command_text(command)
+            emit_shell_event(
+                None,
+                ShellExecutionEvent(
+                    kind="command_start",
+                    pipeline_index=pipeline_index,
+                    command_index=command_index,
+                    text=command_text,
+                ),
+            )
+            result = self._execute_simple_command(
+                command,
+                stdin=pipeline_input,
+                cancellation=cancellation,
+                pipeline_index=pipeline_index,
+                command_index=command_index,
+            )
+            if result.stderr:
+                pipeline_stderr.append(result.stderr)
+            if result.exit_code != 0:
+                last_result = result
+                break
+            if command_index < len(pipeline.commands) - 1:
+                if pipeline.pipe_stderr:
+                    pipeline_input = result.stdout + result.stderr
+                else:
+                    pipeline_input = result.stdout
+            last_result = result
+        merged_stderr = "".join(pipeline_stderr)
+        if last_result.exit_code != 0:
+            return ShellCommandResult(
+                stdout="",
+                stderr=merged_stderr,
+                exit_code=last_result.exit_code,
+            )
+        return ShellCommandResult(
+            stdout=last_result.stdout,
+            stderr=merged_stderr,
+            exit_code=last_result.exit_code,
+        )
+
+    def _execute_simple_command(
+        self,
+        command: ShellSimpleCommand,
+        *,
+        stdin: str,
+        cancellation: ShellCancellationToken,
+        pipeline_index: int,
+        command_index: int,
+    ) -> ShellCommandResult:
+        command_input, output_redirects = self._prepare_redirections(
+            command.redirections,
+            stdin=stdin,
+        )
+        result = self._run_command_handler(
+            command,
+            stdin=command_input,
+            cancellation=cancellation,
+        )
+        visible_result = self._apply_output_redirections(
+            output_redirects,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            exit_code=result.exit_code,
+        )
+        if visible_result.stdout:
+            emit_shell_event(
+                None,
+                ShellExecutionEvent(
+                    kind="stdout",
+                    pipeline_index=pipeline_index,
+                    command_index=command_index,
+                    text=visible_result.stdout,
+                ),
+            )
+        if visible_result.stderr:
+            emit_shell_event(
+                None,
+                ShellExecutionEvent(
+                    kind="stderr",
+                    pipeline_index=pipeline_index,
+                    command_index=command_index,
+                    text=visible_result.stderr,
+                ),
+            )
+        emit_shell_event(
+            None,
+            ShellExecutionEvent(
+                kind="command_end",
+                pipeline_index=pipeline_index,
+                command_index=command_index,
+                exit_code=visible_result.exit_code,
+            ),
+        )
+        return visible_result
+
+    def _prepare_redirections(
+        self,
+        redirections: tuple[ShellRedirection, ...],
+        *,
+        stdin: str,
+    ) -> tuple[str, tuple[ShellRedirection, ...]]:
+        command_input = stdin
+        output_redirects: list[ShellRedirection] = []
+        for redirection in redirections:
+            target = self._resolve_user_path(redirection.target)
+            match redirection.operator:
+                case "<":
+                    self._policy.ensure_read_allowed(target)
+                    if not target.is_file():
+                        raise ToolError.file_missing(target)
+                    command_input = target.read_text(encoding="utf-8")
+                case ">" | ">>":
+                    self._policy.ensure_write_allowed(target)
+                    output_redirects.append(redirection)
+        return (command_input, tuple(output_redirects))
+
+    def _apply_output_redirections(
+        self,
+        redirections: tuple[ShellRedirection, ...],
+        *,
+        stdout: str,
+        stderr: str,
+        exit_code: int,
+    ) -> ShellCommandResult:
+        redirected_stdout = stdout
+        for redirection in redirections:
+            target = self._resolve_user_path(redirection.target)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if redirection.operator == ">>":
+                with target.open("a", encoding="utf-8") as handle:
+                    handle.write(stdout)
+            else:
+                target.write_text(stdout, encoding="utf-8")
+            redirected_stdout = ""
+        return ShellCommandResult(
+            stdout=redirected_stdout,
+            stderr=stderr,
+            exit_code=exit_code,
+        )
+
+    def _run_command_handler(
+        self,
+        command: ShellSimpleCommand,
+        *,
+        stdin: str,
+        cancellation: ShellCancellationToken,
+    ) -> ShellCommandResult:
+        context = ShellCommandContext(cwd=self._cwd, stdin=stdin)
+        try:
+            handler = self._shell_registry.resolve(command.program)
+        except ShellRegistryError:
+            return self._run_external_command(command, context=context)
+        return handler(
+            context=context,
+            arguments=command.arguments,
+            cancellation=cancellation,
+            event_sink=None,
+        )
+
+    def _run_external_command(
+        self,
+        command: ShellSimpleCommand,
+        *,
+        context: ShellCommandContext,
+    ) -> ShellCommandResult:
+        argv = [command.program, *command.arguments]
+        env = _merge_command_environment(command.env_assignments)
+        try:
+            completed = subprocess.run(  # noqa: S603
+                argv,
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=context.cwd,
+                input=context.stdin,
+                env=env,
+            )
+        except FileNotFoundError:
+            message = f"Command not found: {command.program}\n"
+            return ShellCommandResult(stdout="", stderr=message, exit_code=127)
+        return ShellCommandResult(
+            stdout=completed.stdout,
+            stderr=completed.stderr,
+            exit_code=completed.returncode,
+        )
+
     @staticmethod
     def _is_text_file(path: Path) -> bool:
         binary_extensions = {
@@ -363,10 +618,38 @@ def _normalize_tool_name(value: str) -> ToolName:
             raise ToolError.unknown_tool(value)
 
 
-def _build_shell_command(command: str) -> list[str]:
-    if os.name == "nt":
-        return ["cmd.exe", "/c", command]
-    return ["/bin/sh", "-lc", command]
+def _default_shell_registry() -> ShellCommandRegistry:
+    registry = ShellCommandRegistry()
+    registry.register("echo", _echo_command_handler)
+    return registry
+
+
+def _echo_command_handler(
+    *,
+    context: ShellCommandContext,
+    arguments: tuple[str, ...],
+    cancellation: ShellCancellationToken,
+    event_sink: object | None,
+) -> ShellCommandResult:
+    _ = context
+    _ = event_sink
+    cancellation.ensure_active()
+    output = f"{' '.join(arguments)}\n" if arguments else "\n"
+    return ShellCommandResult(stdout=output, stderr="", exit_code=0)
+
+
+def _merge_command_environment(
+    assignments: tuple[ShellEnvAssignment, ...],
+) -> dict[str, str]:
+    env = dict(os.environ)
+    for assignment in assignments:
+        env[assignment.name] = assignment.value
+    return env
+
+
+def _render_command_text(command: ShellSimpleCommand) -> str:
+    parts: list[str] = [command.program, *command.arguments]
+    return " ".join(parts)
 
 
 def _is_within_root(path: Path, root: Path) -> bool:

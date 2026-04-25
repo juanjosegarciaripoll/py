@@ -232,6 +232,55 @@ class ToolTests(unittest.TestCase):
         assert_raises_tool_error("read", {})
         assert_raises_tool_error("find", {"pattern": 5})
 
+    def test_bash_rejects_unsupported_control_operator(self) -> None:
+        test_dir = TMP_DIR / "tools-bash-unsupported"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            tools = BuiltinToolExecutor(cwd=test_dir)
+            failed = False
+            try:
+                tools.bash("echo alpha && echo beta")
+            except Exception:  # noqa: BLE001
+                failed = True
+            assert failed is True
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_bash_applies_write_permissions_for_redirection(self) -> None:
+        test_dir = TMP_DIR / "tools-bash-redirection-policy"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            policy = ToolSandboxPolicy(
+                allowed_roots=(test_dir.resolve(),),
+                allow_read=True,
+                allow_write=False,
+                allow_execute=True,
+            )
+            tools = BuiltinToolExecutor(cwd=test_dir, policy=policy)
+            failed = False
+            try:
+                tools.bash("echo hello > out.txt")
+            except ToolPermissionError:
+                failed = True
+            assert failed is True
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_bash_supports_pipeline_and_separator(self) -> None:
+        test_dir = TMP_DIR / "tools-bash-pipeline-separator"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            tools = BuiltinToolExecutor(cwd=test_dir)
+            result = tools.bash("echo alpha ; echo beta")
+            assert result.exit_code == 0
+            assert "alpha" in result.stdout
+            assert "beta" in result.stdout
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
     def test_permission_policy_allow_and_deny_helpers(self) -> None:
         allow_all = ToolPermissionPolicy.allow_all()
         assert allow_all.is_allowed("read") is True
