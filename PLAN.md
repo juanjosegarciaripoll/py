@@ -136,13 +136,28 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
    Granular implementation plan:
    - [x] Define shell subset and typed AST nodes (commands, args, env assignments, redirections, pipelines).
    - [x] Implement parser stages as composable elements (tokenizer, parser, validator, planner).
+   - [x] Add conditional pipeline connectors (`&&`, `||`) with short-circuit execution semantics.
    - [x] Add runtime cancellation/signal propagation model for execution events.
    - [x] Design extensibility hooks for adding new syntax elements/handlers safely.
    - [x] Integrate parser/registry/runtime path into `bash` execution with safe command parsing and redirection policy enforcement.
+   - [ ] Implement command argument parsing infrastructure reusable across built-in shell commands.
+   - [ ] Implement parser-level glob expansion and pass expanded argv to command handlers.
+   - [ ] Implement built-in `grep` command handler.
+   - [ ] Implement built-in `ls` command handler.
+   - [ ] Implement built-in `dir` command handler.
+   - [ ] Implement built-in `cd` command handler.
+   - [ ] Implement built-in `pwd` command handler.
+   - [ ] Implement built-in `cp` command handler.
+   - [ ] Implement built-in `mv` command handler.
+   - [ ] Implement built-in `cat` command handler.
+   - [ ] Implement built-in `head` command handler.
+   - [ ] Implement built-in `tail` command handler.
+   - [ ] Implement built-in `mkdir` command handler.
    - [ ] Add execution safety limits (timeouts/output size/pipeline bounds enforcement at runtime) and finalize strict behavior docs.
    Completed progress:
    - Added `shell_subset` AST models and structural validation helpers in `py-agent-tools`.
    - Added composable parser stages with `ShlexTokenizer` and `ShellSubsetParser` to produce validated shell-subset AST programs.
+   - Added conditional parsing/execution for `&&` and `||` with short-circuit behavior.
    - Added shell runtime primitives for cancellation tokens and structured execution event emission.
    - Added extensible shell command registry primitives for modular command-handler registration.
    - Replaced full-shell invocation in `bash` with parsed subset execution (including `;`, `&&`, `||`, pipeline handling, and policy-aware redirection checks).
