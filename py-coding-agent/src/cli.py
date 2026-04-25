@@ -13,7 +13,13 @@ from .compaction import CompactionSettings
 from .config import AppConfig, load_config
 from .extensions import AppEvent, EventBus, EventListener
 from .session import CompactionRecord, SessionStore, timestamp_ms
-from .tools import BashResult, BuiltinToolExecutor, GrepMatch, ToolError
+from .tools import (
+    BashResult,
+    BuiltinToolExecutor,
+    GrepMatch,
+    ToolError,
+    ToolSandboxPolicy,
+)
 from .tui import has_textual_dependency, launch_tui_mode
 
 if TYPE_CHECKING:
@@ -48,6 +54,11 @@ class RunConfig:
     compaction_enabled: bool = True
     compaction_reserve_tokens: int = 16_384
     compaction_keep_recent_tokens: int = 20_000
+    tool_allow_read: bool = True
+    tool_allow_write: bool = True
+    tool_allow_execute: bool = True
+    tool_allowed_roots: tuple[str, ...] = ()
+    skills_root: str = "skills"
 
 
 @dataclass(slots=True)
@@ -126,6 +137,11 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
         compaction_enabled=defaults.compaction_enabled,
         compaction_reserve_tokens=defaults.compaction_reserve_tokens,
         compaction_keep_recent_tokens=defaults.compaction_keep_recent_tokens,
+        tool_allow_read=defaults.tool_allow_read,
+        tool_allow_write=defaults.tool_allow_write,
+        tool_allow_execute=defaults.tool_allow_execute,
+        tool_allowed_roots=defaults.tool_allowed_roots,
+        skills_root=defaults.skills_root,
     )
 
 
@@ -155,6 +171,7 @@ class CodingAgentApp:
         stdout: TextIO,
     ) -> int:
         """Run one mode and return process exit code."""
+        self._configure_tools(config)
         store = self._build_store(config)
         compaction_settings = CompactionSettings(
             enabled=config.compaction_enabled,
@@ -202,6 +219,29 @@ class CodingAgentApp:
                     persistence=persistence,
                     stdout=stdout,
                 )
+
+    def _configure_tools(self, config: RunConfig) -> None:
+        if config.tool_allowed_roots:
+            resolved_roots = tuple(
+                _resolve_root_path(raw_path)
+                for raw_path in config.tool_allowed_roots
+            )
+            policy = ToolSandboxPolicy(
+                allowed_roots=resolved_roots,
+                allow_read=config.tool_allow_read,
+                allow_write=config.tool_allow_write,
+                allow_execute=config.tool_allow_execute,
+            )
+            self._tool_executor = BuiltinToolExecutor(cwd=Path.cwd(), policy=policy)
+            return
+        default_policy = ToolSandboxPolicy.from_cwd(Path.cwd())
+        policy = ToolSandboxPolicy(
+            allowed_roots=default_policy.allowed_roots,
+            allow_read=config.tool_allow_read,
+            allow_write=config.tool_allow_write,
+            allow_execute=config.tool_allow_execute,
+        )
+        self._tool_executor = BuiltinToolExecutor(cwd=Path.cwd(), policy=policy)
 
     def _build_store(self, config: RunConfig) -> SessionStore | None:
         if config.session_file is None:
@@ -480,3 +520,10 @@ def main(argv: list[str] | None = None) -> int:
     config = parse_args(argv)
 
     return app.run(config, stdin=sys.stdin, stdout=sys.stdout)
+
+
+def _resolve_root_path(path_value: str) -> Path:
+    raw = Path(path_value)
+    if raw.is_absolute():
+        return raw.resolve()
+    return (Path.cwd() / raw).resolve()

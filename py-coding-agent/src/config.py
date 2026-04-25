@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import tomllib
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, cast
+from pathlib import Path
+from typing import Literal, cast
 
 type JsonObject = dict[str, object]
 type ExecutionMode = Literal["interactive", "print", "json", "rpc", "tui"]
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 @dataclass(slots=True)
@@ -24,57 +23,150 @@ class AppConfig:
     compaction_enabled: bool = True
     compaction_reserve_tokens: int = 16_384
     compaction_keep_recent_tokens: int = 20_000
+    tool_allow_read: bool = True
+    tool_allow_write: bool = True
+    tool_allow_execute: bool = True
+    tool_allowed_roots: tuple[str, ...] = ()
+    skills_root: str = ".py/skills"
 
 
 def load_config(path: Path | None) -> AppConfig:
     """Load application config from a TOML file path."""
-    if path is None:
-        return AppConfig()
-    if not path.exists():
-        return AppConfig()
-    with path.open("rb") as handle:
+    defaults = AppConfig()
+    resolved_path = resolve_config_path(path)
+    if resolved_path is None or not resolved_path.exists():
+        return defaults
+    with resolved_path.open("rb") as handle:
         parsed: object = tomllib.load(handle)
     data = _as_str_object_dict(parsed)
     if data is None:
-        return AppConfig()
+        return defaults
     agent = _as_str_object_dict(data.get("agent"))
     if agent is None:
-        return AppConfig()
-    mode_value = agent.get("mode")
-    branch_value = agent.get("branch")
-    session_value = agent.get("session_file")
-    context_window_value = agent.get("context_window_tokens")
-    compaction = _as_str_object_dict(agent.get("compaction"))
-    mode = _as_mode(mode_value)
-    branch = branch_value if isinstance(branch_value, str) else "main"
-    session_file = session_value if isinstance(session_value, str) else None
-    context_window_tokens = (
-        context_window_value
-        if isinstance(context_window_value, int) and context_window_value > 0
-        else 272_000
+        return defaults
+    mode = _as_mode(agent.get("mode"))
+    branch = _as_str(agent.get("branch"), defaults.branch)
+    session_file = _as_optional_str(agent.get("session_file"))
+    context_window_tokens = _as_positive_int(
+        agent.get("context_window_tokens"),
+        defaults.context_window_tokens,
     )
-    enabled = True
-    reserve_tokens = 16_384
-    keep_recent_tokens = 20_000
-    if compaction is not None:
-        enabled_value = compaction.get("enabled")
-        reserve_value = compaction.get("reserve_tokens")
-        keep_recent_value = compaction.get("keep_recent_tokens")
-        if isinstance(enabled_value, bool):
-            enabled = enabled_value
-        if isinstance(reserve_value, int) and reserve_value > 0:
-            reserve_tokens = reserve_value
-        if isinstance(keep_recent_value, int) and keep_recent_value > 0:
-            keep_recent_tokens = keep_recent_value
+    (
+        compaction_enabled,
+        compaction_reserve_tokens,
+        compaction_keep_recent_tokens,
+    ) = _parse_compaction(agent, defaults)
+    (
+        tool_allow_read,
+        tool_allow_write,
+        tool_allow_execute,
+        tool_allowed_roots,
+    ) = _parse_tools(agent, defaults)
+    skills_root = _parse_skills(agent, defaults)
     return AppConfig(
         mode=mode,
         branch=branch,
         session_file=session_file,
         context_window_tokens=context_window_tokens,
-        compaction_enabled=enabled,
-        compaction_reserve_tokens=reserve_tokens,
-        compaction_keep_recent_tokens=keep_recent_tokens,
+        compaction_enabled=compaction_enabled,
+        compaction_reserve_tokens=compaction_reserve_tokens,
+        compaction_keep_recent_tokens=compaction_keep_recent_tokens,
+        tool_allow_read=tool_allow_read,
+        tool_allow_write=tool_allow_write,
+        tool_allow_execute=tool_allow_execute,
+        tool_allowed_roots=tool_allowed_roots,
+        skills_root=skills_root,
     )
+
+
+def _parse_compaction(
+    agent: JsonObject,
+    defaults: AppConfig,
+) -> tuple[bool, int, int]:
+    compaction = _as_str_object_dict(agent.get("compaction"))
+    enabled = defaults.compaction_enabled
+    reserve_tokens = defaults.compaction_reserve_tokens
+    keep_recent_tokens = defaults.compaction_keep_recent_tokens
+    if compaction is not None:
+        enabled = _as_bool(compaction.get("enabled"), default=enabled)
+        reserve_tokens = _as_positive_int(
+            compaction.get("reserve_tokens"),
+            reserve_tokens,
+        )
+        keep_recent_tokens = _as_positive_int(
+            compaction.get("keep_recent_tokens"),
+            keep_recent_tokens,
+        )
+    return (enabled, reserve_tokens, keep_recent_tokens)
+
+
+def _parse_tools(
+    agent: JsonObject,
+    defaults: AppConfig,
+) -> tuple[bool, bool, bool, tuple[str, ...]]:
+    tools = _as_str_object_dict(agent.get("tools"))
+    tool_allow_read = defaults.tool_allow_read
+    tool_allow_write = defaults.tool_allow_write
+    tool_allow_execute = defaults.tool_allow_execute
+    tool_allowed_roots = defaults.tool_allowed_roots
+    if tools is None:
+        return (
+            tool_allow_read,
+            tool_allow_write,
+            tool_allow_execute,
+            tool_allowed_roots,
+        )
+    tool_allow_read = _as_bool(tools.get("allow_read"), default=tool_allow_read)
+    tool_allow_write = _as_bool(tools.get("allow_write"), default=tool_allow_write)
+    tool_allow_execute = _as_bool(
+        tools.get("allow_execute"),
+        default=tool_allow_execute,
+    )
+    parsed_roots = _as_tuple_of_str(tools.get("allowed_roots"))
+    if parsed_roots is not None:
+        tool_allowed_roots = parsed_roots
+    return (
+        tool_allow_read,
+        tool_allow_write,
+        tool_allow_execute,
+        tool_allowed_roots,
+    )
+
+
+def _parse_skills(agent: JsonObject, defaults: AppConfig) -> str:
+    skills = _as_str_object_dict(agent.get("skills"))
+    if skills is None:
+        return defaults.skills_root
+    return _as_nonempty_str(skills.get("root"), defaults.skills_root)
+
+
+def resolve_config_path(path: Path | None) -> Path | None:
+    """Resolve explicit or default config path."""
+    if path is not None:
+        return path
+    local_path = local_config_path()
+    if local_path.exists():
+        return local_path
+    env_path = os.environ.get("PY_CODING_AGENT_CONFIG")
+    if env_path:
+        return Path(env_path)
+    return default_config_path()
+
+
+def local_config_path() -> Path:
+    """Return local project config path (`.py/config.toml`)."""
+    return Path.cwd() / ".py" / "config.toml"
+
+
+def default_config_path() -> Path:
+    """Return default user config path for py-coding-agent."""
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        return Path(appdata) / "py-coding-agent" / "config.toml"
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    if xdg:
+        return Path(xdg) / "py-coding-agent" / "config.toml"
+    return Path.home() / ".config" / "py-coding-agent" / "config.toml"
 
 
 def _as_mode(value: object) -> ExecutionMode:
@@ -93,3 +185,47 @@ def _as_str_object_dict(value: object) -> JsonObject | None:
             return None
         result[key] = item
     return result
+
+
+def _as_bool(value: object, *, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    return default
+
+
+def _as_positive_int(value: object, default: int) -> int:
+    if isinstance(value, int) and value > 0:
+        return value
+    return default
+
+
+def _as_str(value: object, default: str) -> str:
+    if isinstance(value, str):
+        return value
+    return default
+
+
+def _as_nonempty_str(value: object, default: str) -> str:
+    if isinstance(value, str) and value:
+        return value
+    return default
+
+
+def _as_optional_str(value: object) -> str | None:
+    if isinstance(value, str):
+        return value
+    return None
+
+
+def _as_tuple_of_str(value: object) -> tuple[str, ...] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        return None
+    raw_values = cast("list[object]", value)
+    result: list[str] = []
+    for item in raw_values:
+        if not isinstance(item, str):
+            return None
+        result.append(item)
+    return tuple(result)

@@ -9,7 +9,13 @@ from .cli import (
     parse_args,
 )
 from .compaction import CompactionSettings
-from .config import AppConfig, load_config
+from .config import (
+    AppConfig,
+    default_config_path,
+    load_config,
+    local_config_path,
+    resolve_config_path,
+)
 from .extensions import AppEvent, EventBus, EventListener
 from .session import CompactionRecord, SessionRecord, SessionStore
 from .skills import (
@@ -55,7 +61,10 @@ __all__ = [
     "TuiCommandResult",
     "TuiController",
     "build_parser",
+    "default_config_path",
     "load_config",
+    "local_config_path",
     "main",
     "parse_args",
+    "resolve_config_path",
 ]

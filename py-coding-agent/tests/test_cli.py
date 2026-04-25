@@ -105,6 +105,29 @@ class CliTests(unittest.TestCase):
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 
+    def test_parse_args_loads_tool_policy_defaults(self) -> None:
+        test_dir = TMP_DIR / "cli-tools-config"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        config_path = test_dir / "agent.toml"
+        config_path.write_text(
+            "[agent]\n"
+            "[agent.tools]\n"
+            "allow_read=false\n"
+            "allow_write=true\n"
+            "allow_execute=false\n"
+            "allowed_roots=['py-coding-agent/src']\n",
+            encoding="utf-8",
+        )
+        try:
+            config = parse_args(["--config", str(config_path), "--mode", "rpc"])
+            assert config.tool_allow_read is False
+            assert config.tool_allow_write is True
+            assert config.tool_allow_execute is False
+            assert config.tool_allowed_roots == ("py-coding-agent/src",)
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
     def test_parse_args_rejects_invalid_mode(self) -> None:
         error: BaseException | None = None
         try:
@@ -338,6 +361,41 @@ class CliTests(unittest.TestCase):
         response = json.loads(lines[0])
         assert response["id"] == "tool-2"
         assert response["error"]["code"] == "tool_error"
+
+    def test_run_rpc_mode_honors_execute_policy(self) -> None:
+        app = CodingAgentApp()
+        request: dict[str, object] = {
+            "id": "tool-3",
+            "method": "tool",
+            "params": {
+                "name": "bash",
+                "arguments": {"command": "echo hello"},
+            },
+        }
+        stdin = io.StringIO(json.dumps(request) + "\n" + '{"method":"shutdown"}\n')
+        stdout = io.StringIO()
+        exit_code = app.run(
+            RunConfig(
+                mode="rpc",
+                prompt="",
+                session_file=None,
+                branch="main",
+                config_file=None,
+                context_window_tokens=272000,
+                compaction_enabled=True,
+                compaction_reserve_tokens=16384,
+                compaction_keep_recent_tokens=20000,
+                tool_allow_execute=False,
+            ),
+            stdin=stdin,
+            stdout=stdout,
+        )
+        lines = [line for line in stdout.getvalue().splitlines() if line]
+        assert exit_code == 0
+        response = cast("dict[str, object]", json.loads(lines[0]))
+        error = cast("dict[str, object]", response["error"])
+        assert error["code"] == "tool_error"
+        assert "disabled by policy" in str(error["message"])
 
     def test_run_tui_mode_calls_launcher(self) -> None:
         class StubTuiApp(CodingAgentApp):

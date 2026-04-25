@@ -10,3 +10,7 @@ Current implementation status:
 - Optional TOML config defaults (`[agent]` section)
 - Initial extension hooks via event bus (`interaction_complete`)
 - Unit tests for parsing and mode behavior
+
+Documentation:
+
+- Configuration schema: `docs/configuration.md`

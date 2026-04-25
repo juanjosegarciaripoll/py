@@ -5,6 +5,7 @@ build/
 dist/
 wheels/
 *.egg-info
+.coverage
 
 # Virtual environments
 .venv
@@ -12,3 +13,7 @@ wheels/
 # References
 pi-mono/
 
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+py-coding-agent/tests/.tmp/

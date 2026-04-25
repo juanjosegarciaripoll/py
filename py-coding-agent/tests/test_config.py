@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import unittest
 from pathlib import Path
 
-from src.config import AppConfig, load_config
+from src.config import (
+    AppConfig,
+    default_config_path,
+    load_config,
+    local_config_path,
+    resolve_config_path,
+)
 
 TMP_DIR = Path(__file__).resolve().parent / ".tmp"
 CUSTOM_CONTEXT_WINDOW = 12_345
@@ -83,6 +90,84 @@ class ConfigTests(unittest.TestCase):
             assert config == AppConfig()
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_load_config_reads_tool_and_skills_sections(self) -> None:
+        test_dir = TMP_DIR / "config-tools-skills"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        path = test_dir / "agent.toml"
+        path.write_text(
+            "[agent]\n"
+            "mode='rpc'\n"
+            "[agent.tools]\n"
+            "allow_read=false\n"
+            "allow_write=true\n"
+            "allow_execute=false\n"
+            "allowed_roots=['src','docs']\n"
+            "[agent.skills]\n"
+            "root='custom-skills'\n",
+            encoding="utf-8",
+        )
+        try:
+            config = load_config(path)
+            assert config.tool_allow_read is False
+            assert config.tool_allow_write is True
+            assert config.tool_allow_execute is False
+            assert config.tool_allowed_roots == ("src", "docs")
+            assert config.skills_root == "custom-skills"
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_resolve_config_path_prefers_environment(self) -> None:
+        test_dir = TMP_DIR / "config-env-resolution"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        original_cwd = Path.cwd()
+        original = os.environ.get("PY_CODING_AGENT_CONFIG")
+        os.environ["PY_CODING_AGENT_CONFIG"] = "tmp/custom.toml"
+        try:
+            os.chdir(test_dir)
+            resolved = resolve_config_path(None)
+            assert resolved is not None
+            assert str(resolved).endswith("tmp\\custom.toml")
+        finally:
+            os.chdir(original_cwd)
+            if original is None:
+                del os.environ["PY_CODING_AGENT_CONFIG"]
+            else:
+                os.environ["PY_CODING_AGENT_CONFIG"] = original
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_resolve_config_path_prefers_local_dot_py_config(self) -> None:
+        test_dir = TMP_DIR / "config-local-resolution"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        (test_dir / ".py").mkdir(parents=True, exist_ok=True)
+        config_path = test_dir / ".py" / "config.toml"
+        config_path.write_text("[agent]\nmode='json'\n", encoding="utf-8")
+        original_cwd = Path.cwd()
+        original_env = os.environ.get("PY_CODING_AGENT_CONFIG")
+        os.environ["PY_CODING_AGENT_CONFIG"] = "tmp/custom.toml"
+        try:
+            os.chdir(test_dir)
+            resolved = resolve_config_path(None)
+            assert resolved == config_path
+            assert local_config_path() == config_path
+        finally:
+            os.chdir(original_cwd)
+            if original_env is None:
+                del os.environ["PY_CODING_AGENT_CONFIG"]
+            else:
+                os.environ["PY_CODING_AGENT_CONFIG"] = original_env
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_default_config_path_returns_toml(self) -> None:
+        path = default_config_path()
+        assert path.name == "config.toml"
+        assert "py-coding-agent" in str(path)
+
+    def test_default_skills_root_uses_dot_py_folder(self) -> None:
+        config = AppConfig()
+        assert config.skills_root == ".py/skills"
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ dev = ["ruff", "basedpyright", "mypy", "coverage[toml]>=7.0", "httpx", "pydantic
 [tool.ruff]
 line-length = 88
 target-version = "py313"
+extend-exclude = ["py-coding-agent/tests/.tmp"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "C90", "I", "N", "UP", "YTT", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "T10", "DJ", "EM", "EXE", "FA", "ISC", "ICN", "G", "INP", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SLOT", "SIM", "TID", "TCH", "INT", "ARG", "PTH", "ERA", "PD", "PGH", "PL", "TRY", "FLY", "NPY", "AIR", "PERF", "FURB", "LOG", "RUF"]
@@ -30,3 +31,6 @@ pythonVersion = "3.13"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
+
+[tool.coverage.run]
+omit = ["py-coding-agent/tests/.tmp/*"]

@@ -14,9 +14,16 @@ TMP_DIR = Path(__file__).resolve().parent / ".tmp"
 class SkillTests(unittest.TestCase):
     """Tests for skill listing/loading and dynamic tool activation."""
 
+    @classmethod
+    def setUpClass(cls) -> None:
+        shutil.rmtree(TMP_DIR, ignore_errors=True)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        shutil.rmtree(TMP_DIR, ignore_errors=True)
+
     def test_list_and_load_skill(self) -> None:
         skills_root = TMP_DIR / "skills-db"
-        shutil.rmtree(skills_root, ignore_errors=True)
         skill_dir = skills_root / "demo-skill"
         (skill_dir / "tool").mkdir(parents=True, exist_ok=True)
         (skill_dir / "SKILL.md").write_text(
@@ -27,11 +34,11 @@ class SkillTests(unittest.TestCase):
         (skill_dir / "tool" / "__init__.py").write_text(
             "def register_tools():\n"
             "    def ping(arguments):\n"
-            "        value = arguments.get('name', 'world')\n"
+            '        value = arguments.get("name", "world")\n'
             "        if not isinstance(value, str):\n"
-            "            value = 'world'\n"
-            "        return {'message': 'pong:' + value}\n"
-            "    return {'ping': ping}\n",
+            '            value = "world"\n'
+            '        return {"message": "pong:" + value}\n'
+            '    return {"ping": ping}\n',
             encoding="utf-8",
         )
         database = SkillDatabase(root=skills_root)
@@ -64,23 +71,19 @@ class SkillTests(unittest.TestCase):
 
     def test_load_skill_file_rejects_path_escape(self) -> None:
         skills_root = TMP_DIR / "skills-escape"
-        shutil.rmtree(skills_root, ignore_errors=True)
         skill_dir = skills_root / "safe-skill"
         skill_dir.mkdir(parents=True, exist_ok=True)
         (skill_dir / "SKILL.md").write_text(
             "# Safe Skill\n\nDescription.\n",
             encoding="utf-8",
         )
+        database = SkillDatabase(root=skills_root)
+        failed = False
         try:
-            database = SkillDatabase(root=skills_root)
-            failed = False
-            try:
-                database.load_skill_file("safe-skill", "../outside.txt")
-            except SkillValidationError:
-                failed = True
-            assert failed is True
-        finally:
-            shutil.rmtree(skills_root, ignore_errors=True)
+            database.load_skill_file("safe-skill", "../outside.txt")
+        except SkillValidationError:
+            failed = True
+        assert failed is True
 
     def test_unknown_skill_tool_lookup_returns_empty(self) -> None:
         database = SkillDatabase(root=TMP_DIR / "does-not-exist")

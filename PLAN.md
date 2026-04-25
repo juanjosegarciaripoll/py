@@ -72,7 +72,7 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
 
 ### Phase 4: Coding Agent CLI (py-coding-agent)
 
-**Status:** In progress
+**Status:** Completed
 
 1. Implement multi-mode execution (interactive, print, JSON, RPC). Initial mode scaffold and tests implemented.
 2. Set up Textual-based TUI with editor, keyboard shortcuts, and slash commands.
@@ -92,7 +92,7 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
    - Keep-boundary strategy: preserve newest messages inside `keep_recent_tokens`, summarize older messages into one structured checkpoint.
    - Session persistence parity baseline: append compaction entries to JSONL and rebuild effective context from latest compaction boundary.
    - Structured summary contract parity baseline: `Goal`, `Constraints & Preferences`, `Progress`, `Key Decisions`, `Next Steps`, `Critical Context`.
-   Deferred to future phase items (depends on not-yet-implemented capabilities, especially tools and full agent runtime integration):
+     Deferred to future phase items (depends on not-yet-implemented capabilities, especially tools and full agent runtime integration):
    - File-operation extraction from tool calls (`read/write/edit`) and cumulative `<read-files>/<modified-files>` tracking.
    - Overflow-error recovery compaction + automatic retry loop integration.
    - Extension interception parity (`session_before_compact`) with custom compaction override/cancel behavior.
@@ -121,7 +121,7 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
    - Activated skill tools are exposed to the LLM as namespaced tool names (`skill.<skill-name>.<tool-name>`).
    - No RPC coupling for skills:
      skill loading/activation is handled directly in Python runtime objects.
-   Initial implementation completed:
+     Initial implementation completed:
    - Added `SkillDatabase` with validation, listing, file loading, and activation flows.
    - Added tests for listing/loading, path safety, and dynamic tool activation.
 8. Implement settings and configuration with TOML files. Initial defaults loading and CLI override behavior implemented.
