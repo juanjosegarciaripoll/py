@@ -13,11 +13,12 @@ from .compaction import CompactionSettings
 from .config import AppConfig, load_config
 from .extensions import AppEvent, EventBus, EventListener
 from .session import CompactionRecord, SessionStore, timestamp_ms
+from .tui import has_textual_dependency, launch_tui_mode
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-type ExecutionMode = Literal["interactive", "print", "json", "rpc"]
+type ExecutionMode = Literal["interactive", "print", "json", "rpc", "tui"]
 
 
 def _as_str_object_dict(value: object) -> dict[str, object] | None:
@@ -74,7 +75,7 @@ def build_parser(*, defaults: AppConfig | None = None) -> argparse.ArgumentParse
     )
     parser.add_argument(
         "--mode",
-        choices=["interactive", "print", "json", "rpc"],
+        choices=["interactive", "print", "json", "rpc", "tui"],
         default=config_defaults.mode,
         help="Execution mode",
     )
@@ -192,6 +193,12 @@ class CodingAgentApp:
                     stdin=stdin,
                     store=store,
                     persistence=persistence,
+                )
+            case "tui":
+                return self._run_tui(
+                    store=store,
+                    persistence=persistence,
+                    stdout=stdout,
                 )
 
     def _build_store(self, config: RunConfig) -> SessionStore | None:
@@ -328,6 +335,48 @@ class CodingAgentApp:
                 ),
             )
         return 0
+
+    def _run_tui(
+        self,
+        *,
+        store: SessionStore | None,
+        persistence: _PersistenceContext,
+        stdout: TextIO,
+    ) -> int:
+        return self._launch_tui_mode(
+            store=store,
+            persistence=persistence,
+            stdout=stdout,
+        )
+
+    def _launch_tui_mode(
+        self,
+        *,
+        store: SessionStore | None,
+        persistence: _PersistenceContext,
+        stdout: TextIO,
+    ) -> int:
+        if not has_textual_dependency():
+            stdout.write(
+                "TUI mode is unavailable: install optional dependency 'textual'.\n"
+            )
+            return 1
+
+        def persist(prompt: str, response: str) -> None:
+            self._persist_interaction(
+                store=store,
+                persistence=persistence,
+                payload=_InteractionPayload(
+                    mode="tui",
+                    prompt=prompt,
+                    response=response,
+                ),
+            )
+
+        return launch_tui_mode(
+            responder=self.respond,
+            persist_interaction=persist,
+        )
 
     def _persist_interaction(
         self,

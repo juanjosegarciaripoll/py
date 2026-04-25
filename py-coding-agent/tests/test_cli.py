@@ -66,6 +66,10 @@ class CliTests(unittest.TestCase):
         assert config.branch == "feature-x"
         assert config.config_file is None
 
+    def test_parse_args_tui_mode(self) -> None:
+        config = parse_args(["--mode", "tui"])
+        assert config.mode == "tui"
+
     def test_parse_args_uses_config_defaults_and_cli_overrides(self) -> None:
         test_dir = TMP_DIR / "cli-config"
         shutil.rmtree(test_dir, ignore_errors=True)
@@ -266,6 +270,42 @@ class CliTests(unittest.TestCase):
         assert lines[3] == '{"error":"invalid_params"}'
         assert lines[4] == '{"error":"invalid_params"}'
         assert lines[5] == '{"ok":true}'
+
+    def test_run_tui_mode_calls_launcher(self) -> None:
+        class StubTuiApp(CodingAgentApp):
+            def __init__(self) -> None:
+                super().__init__()
+                self.called = False
+
+            def _launch_tui_mode(
+                self,
+                *,
+                store: object,
+                persistence: object,
+                stdout: object,
+            ) -> int:
+                del store, persistence, stdout
+                self.called = True
+                return 0
+
+        app = StubTuiApp()
+        exit_code = app.run(
+            RunConfig(
+                mode="tui",
+                prompt="",
+                session_file=None,
+                branch="main",
+                config_file=None,
+                context_window_tokens=272000,
+                compaction_enabled=True,
+                compaction_reserve_tokens=16384,
+                compaction_keep_recent_tokens=20000,
+            ),
+            stdin=io.StringIO(),
+            stdout=io.StringIO(),
+        )
+        assert exit_code == 0
+        assert app.called is True
 
     def test_print_mode_persists_session_record(self) -> None:
         app = CodingAgentApp()

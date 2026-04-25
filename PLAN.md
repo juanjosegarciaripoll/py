@@ -76,6 +76,14 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
 
 1. Implement multi-mode execution (interactive, print, JSON, RPC). Initial mode scaffold and tests implemented.
 2. Set up Textual-based TUI with editor, keyboard shortcuts, and slash commands.
+   Learned implementation details from `pi-mono/packages/coding-agent` to apply now:
+   - Keep UI composition explicit: header/status/transcript/editor/footer are separate components, and editor focus is restored after temporary UI flows.
+   - Use an editor wrapper that handles app-level shortcuts first (interrupt/clear/exit/model-cycling/tool-expansion), then delegates to core editor behavior.
+   - Define slash commands as a central command set (name + description) and reuse it for both autocomplete metadata and execution dispatch.
+   - Dispatch slash commands through a command map (not ad-hoc branching), with strict behavior: clear editor after handled commands, keep plain text for non-command input.
+   - Preserve interactive responsiveness during long-running tasks: interrupt key should abort active work, while new input can be queued instead of dropped.
+   - Separate UI event handling from runtime actions so command parsing/shortcut logic remains unit-testable without terminal rendering dependencies.
+   - Maintain discoverability parity: expose a built-in “hotkeys/help” command and keep keybinding labels consistent with configured shortcuts.
 3. Add session management with JSONL persistence and branching. Initial implementation and tests completed.
 4. Implement compaction system with token management and summarization.
    Learned implementation details from `pi-mono/packages/coding-agent` to apply now:

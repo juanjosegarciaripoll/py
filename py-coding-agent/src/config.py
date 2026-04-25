@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, cast
 
 type JsonObject = dict[str, object]
-type ExecutionMode = Literal["interactive", "print", "json", "rpc"]
+type ExecutionMode = Literal["interactive", "print", "json", "rpc", "tui"]
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -78,7 +78,7 @@ def load_config(path: Path | None) -> AppConfig:
 
 
 def _as_mode(value: object) -> ExecutionMode:
-    if value in {"interactive", "print", "json", "rpc"}:
+    if value in {"interactive", "print", "json", "rpc", "tui"}:
         return cast("ExecutionMode", value)
     return "interactive"
 

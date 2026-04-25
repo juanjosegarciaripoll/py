@@ -12,6 +12,7 @@ from .compaction import CompactionSettings
 from .config import AppConfig, load_config
 from .extensions import AppEvent, EventBus, EventListener
 from .session import CompactionRecord, SessionRecord, SessionStore
+from .tui_controller import TuiCommandResult, TuiController
 
 __all__ = [
     "AppConfig",
@@ -25,6 +26,8 @@ __all__ = [
     "RunConfig",
     "SessionRecord",
     "SessionStore",
+    "TuiCommandResult",
+    "TuiController",
     "build_parser",
     "load_config",
     "main",

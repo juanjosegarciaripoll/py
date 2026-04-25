@@ -60,6 +60,18 @@ class ConfigTests(unittest.TestCase):
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 
+    def test_load_config_accepts_tui_mode(self) -> None:
+        test_dir = TMP_DIR / "config-tui"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        path = test_dir / "agent.toml"
+        path.write_text("[agent]\nmode='tui'\n", encoding="utf-8")
+        try:
+            config = load_config(path)
+            assert config.mode == "tui"
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
     def test_load_config_without_agent_section(self) -> None:
         test_dir = TMP_DIR / "config-empty"
         shutil.rmtree(test_dir, ignore_errors=True)
