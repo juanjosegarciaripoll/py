@@ -346,54 +346,110 @@ class CodingAgentApp:
         persistence: _PersistenceContext,
     ) -> int:
         for line in stdin:
-            text = line.strip()
-            if not text:
-                continue
-            try:
-                parsed: object = json.loads(text)
-            except json.JSONDecodeError:
-                stdout.write('{"error":"invalid_json"}\n')
-                continue
-            request = _as_str_object_dict(parsed)
-            if request is None:
-                stdout.write('{"error":"invalid_request"}\n')
-                continue
-            method = request.get("method")
-            if method == "shutdown":
-                stdout.write('{"ok":true}\n')
-                return 0
-            if method == "tool":
-                response = self._rpc_tool_response(request=request)
-                stdout.write(json.dumps(response) + "\n")
-                continue
-            if method != "prompt":
-                stdout.write('{"error":"method_not_found"}\n')
-                continue
-            params = _as_str_object_dict(request.get("params"))
-            if params is None:
-                stdout.write('{"error":"invalid_params"}\n')
-                continue
-            prompt_value = params.get("prompt", "")
-            if not isinstance(prompt_value, str):
-                stdout.write('{"error":"invalid_params"}\n')
-                continue
-            request_id = request.get("id")
-            response_text = self.respond(prompt_value)
-            response = {
-                "id": request_id,
-                "result": {"response": response_text},
-            }
-            stdout.write(json.dumps(response) + "\n")
-            self._persist_interaction(
+            should_shutdown = self._process_rpc_line(
+                line=line,
+                stdout=stdout,
                 store=store,
                 persistence=persistence,
-                payload=_InteractionPayload(
-                    mode="rpc",
-                    prompt=prompt_value,
-                    response=response_text,
-                ),
             )
+            if should_shutdown:
+                return 0
         return 0
+
+    def _process_rpc_line(
+        self,
+        *,
+        line: str,
+        stdout: TextIO,
+        store: SessionStore | None,
+        persistence: _PersistenceContext,
+    ) -> bool:
+        text = line.strip()
+        if not text:
+            return False
+        try:
+            parsed: object = json.loads(text)
+        except json.JSONDecodeError:
+            stdout.write('{"error":"invalid_json"}\n')
+            return False
+        request = _as_str_object_dict(parsed)
+        if request is None:
+            stdout.write('{"error":"invalid_request"}\n')
+            return False
+        return self._handle_rpc_request(
+            request=request,
+            stdout=stdout,
+            store=store,
+            persistence=persistence,
+        )
+
+    def _handle_rpc_request(
+        self,
+        *,
+        request: dict[str, object],
+        stdout: TextIO,
+        store: SessionStore | None,
+        persistence: _PersistenceContext,
+    ) -> bool:
+        method = request.get("method")
+        if method == "shutdown":
+            stdout.write('{"ok":true}\n')
+            return True
+        if method == "tool":
+            response = self._rpc_tool_response(request=request)
+            stdout.write(json.dumps(response) + "\n")
+            tool_payload = _as_str_object_dict(request.get("params"))
+            if tool_payload is not None:
+                self._persist_rpc_tool_interaction(
+                    store=store,
+                    persistence=persistence,
+                    tool_payload=tool_payload,
+                    response=response,
+                )
+            return False
+        if method != "prompt":
+            stdout.write('{"error":"method_not_found"}\n')
+            return False
+        self._handle_rpc_prompt(
+            request=request,
+            stdout=stdout,
+            store=store,
+            persistence=persistence,
+        )
+        return False
+
+    def _handle_rpc_prompt(
+        self,
+        *,
+        request: dict[str, object],
+        stdout: TextIO,
+        store: SessionStore | None,
+        persistence: _PersistenceContext,
+    ) -> None:
+        params = _as_str_object_dict(request.get("params"))
+        if params is None:
+            stdout.write('{"error":"invalid_params"}\n')
+            return
+        prompt_value = params.get("prompt", "")
+        if not isinstance(prompt_value, str):
+            stdout.write('{"error":"invalid_params"}\n')
+            return
+        request_id = request.get("id")
+        response_text = self.respond(prompt_value)
+        response = {
+            "id": request_id,
+            "result": {"response": response_text},
+        }
+        stdout.write(json.dumps(response) + "\n")
+        self._persist_interaction(
+            store=store,
+            persistence=persistence,
+            payload=_InteractionPayload(
+                mode="rpc",
+                prompt=prompt_value,
+                response=response_text,
+            ),
+        )
 
     def _rpc_tool_response(self, *, request: dict[str, object]) -> dict[str, object]:
         params = _as_str_object_dict(request.get("params"))
@@ -428,6 +484,32 @@ class CodingAgentApp:
                 return serialized
             case _:
                 return result
+
+    def _persist_rpc_tool_interaction(
+        self,
+        *,
+        store: SessionStore | None,
+        persistence: _PersistenceContext,
+        tool_payload: dict[str, object],
+        response: dict[str, object],
+    ) -> None:
+        tool_name = tool_payload.get("name")
+        arguments = _as_str_object_dict(tool_payload.get("arguments"))
+        if not isinstance(tool_name, str) or arguments is None:
+            return
+        prompt_payload = {
+            "tool_name": tool_name,
+            "arguments": arguments,
+        }
+        self._persist_interaction(
+            store=store,
+            persistence=persistence,
+            payload=_InteractionPayload(
+                mode="rpc_tool",
+                prompt=json.dumps(prompt_payload, sort_keys=True),
+                response=json.dumps(response, sort_keys=True),
+            ),
+        )
 
     def _run_tui(
         self,

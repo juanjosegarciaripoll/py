@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from .session import SessionRecord
@@ -130,6 +131,7 @@ def build_structured_summary(
     last_prompt = summarized[-1].prompt.strip() if summarized else "(none)"
     done_items = _sample_lines([record.prompt for record in summarized], limit=5)
     progress_hint = kept[0].prompt.strip() if kept else "(none)"
+    read_files, modified_files = _extract_file_tracking(summarized)
 
     lines = [
         "## Goal",
@@ -166,6 +168,8 @@ def build_structured_summary(
             "",
             "## Critical Context",
             "- Preserve exact file names, commands, and errors from kept turns.",
+            f"- <read-files>: {_format_file_tracking(read_files)}",
+            f"- <modified-files>: {_format_file_tracking(modified_files)}",
         ]
     )
 
@@ -184,3 +188,48 @@ def _sample_lines(items: list[str], *, limit: int) -> list[str]:
         if len(sampled) >= limit:
             break
     return sampled
+
+
+def _extract_file_tracking(records: list[SessionRecord]) -> tuple[list[str], list[str]]:
+    read_files: set[str] = set()
+    modified_files: set[str] = set()
+    for record in records:
+        if record.mode != "rpc_tool":
+            continue
+        try:
+            payload = _as_str_object_dict(json.loads(record.prompt))
+        except json.JSONDecodeError:
+            continue
+        if payload is None:
+            continue
+        tool_name = payload.get("tool_name")
+        arguments = _as_str_object_dict(payload.get("arguments"))
+        if not isinstance(tool_name, str) or arguments is None:
+            continue
+        path_value = arguments.get("path")
+        if not isinstance(path_value, str):
+            continue
+        if tool_name == "read":
+            read_files.add(path_value)
+            continue
+        if tool_name in {"write", "edit"}:
+            modified_files.add(path_value)
+    return (sorted(read_files), sorted(modified_files))
+
+
+def _format_file_tracking(paths: list[str]) -> str:
+    if not paths:
+        return "(none)"
+    return ", ".join(paths)
+
+
+def _as_str_object_dict(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    raw = cast("dict[object, object]", value)
+    result: dict[str, object] = {}
+    for key, item in raw.items():
+        if not isinstance(key, str):
+            return None
+        result[key] = item
+    return result

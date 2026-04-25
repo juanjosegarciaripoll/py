@@ -93,7 +93,6 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
    - Session persistence parity baseline: append compaction entries to JSONL and rebuild effective context from latest compaction boundary.
    - Structured summary contract parity baseline: `Goal`, `Constraints & Preferences`, `Progress`, `Key Decisions`, `Next Steps`, `Critical Context`.
      Deferred to future phase items (depends on not-yet-implemented capabilities, especially tools and full agent runtime integration):
-   - File-operation extraction from tool calls (`read/write/edit`) and cumulative `<read-files>/<modified-files>` tracking.
    - Overflow-error recovery compaction + automatic retry loop integration.
    - Split-turn handling and turn-prefix summarization for oversized single turns.
    - LLM-driven summarization and thinking-level parity for compaction requests.

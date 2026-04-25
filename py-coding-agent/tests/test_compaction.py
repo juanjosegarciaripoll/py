@@ -67,6 +67,50 @@ class CompactionTests(unittest.TestCase):
         assert result.tokens_after > 0
         assert "## Goal" in result.summary
 
+    def test_compact_records_tracks_read_and_modified_files(self) -> None:
+        records = [
+            SessionRecord(
+                id="id-1",
+                timestamp_ms=1,
+                branch="main",
+                mode="rpc_tool",
+                prompt=(
+                    '{"tool_name":"read","arguments":{"path":"src/a.py"}}'
+                ),
+                response='{"id":"1","result":"ok"}',
+            ),
+            SessionRecord(
+                id="id-2",
+                timestamp_ms=2,
+                branch="main",
+                mode="rpc_tool",
+                prompt=(
+                    '{"tool_name":"edit","arguments":{"path":"src/b.py"}}'
+                ),
+                response='{"id":"2","result":{"replacements":1}}',
+            ),
+            SessionRecord(
+                id="id-3",
+                timestamp_ms=3,
+                branch="main",
+                mode="print",
+                prompt="continue",
+                response="ok",
+            ),
+        ]
+        result = compact_records(
+            records=records,
+            context_window_tokens=40,
+            settings=CompactionSettings(
+                enabled=True,
+                reserve_tokens=20,
+                keep_recent_tokens=1,
+            ),
+        )
+        assert result is not None
+        assert "<read-files>: src/a.py" in result.summary
+        assert "<modified-files>: src/b.py" in result.summary
+
     def test_compact_records_returns_none_when_not_needed(self) -> None:
         records = self._make_records()
         context_tokens = estimate_context_tokens(records)

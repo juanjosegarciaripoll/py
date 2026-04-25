@@ -334,6 +334,54 @@ class CliTests(unittest.TestCase):
             for item in result
         )
 
+    def test_run_rpc_mode_persists_tool_interaction(self) -> None:
+        app = CodingAgentApp()
+        test_dir = TMP_DIR / "cli-rpc-tool-session"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        session_path = test_dir / "session.jsonl"
+        request: dict[str, object] = {
+            "id": "tool-4",
+            "method": "tool",
+            "params": {
+                "name": "write",
+                "arguments": {"path": "tool-note.txt", "content": "hello"},
+            },
+        }
+        stdin = io.StringIO(json.dumps(request) + "\n" + '{"method":"shutdown"}\n')
+        stdout = io.StringIO()
+        try:
+            exit_code = app.run(
+                RunConfig(
+                    mode="rpc",
+                    prompt="",
+                    session_file=str(session_path),
+                    branch="main",
+                    config_file=None,
+                    context_window_tokens=272000,
+                    compaction_enabled=True,
+                    compaction_reserve_tokens=16384,
+                    compaction_keep_recent_tokens=20000,
+                ),
+                stdin=stdin,
+                stdout=stdout,
+            )
+            assert exit_code == 0
+            entries = session_path.read_text(encoding="utf-8").splitlines()
+            payloads = [cast("dict[str, object]", json.loads(line)) for line in entries]
+            tool_entries = [
+                payload for payload in payloads if payload.get("mode") == "rpc_tool"
+            ]
+            assert tool_entries
+            prompt_text = tool_entries[-1].get("prompt")
+            assert isinstance(prompt_text, str)
+            prompt_payload = cast("dict[str, object]", json.loads(prompt_text))
+            assert prompt_payload["tool_name"] == "write"
+            arguments = cast("dict[str, object]", prompt_payload["arguments"])
+            assert arguments["path"] == "tool-note.txt"
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
     def test_run_rpc_mode_tool_error(self) -> None:
         app = CodingAgentApp()
         request: dict[str, object] = {
