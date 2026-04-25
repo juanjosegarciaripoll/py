@@ -52,13 +52,22 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
 
 **Status:** Not Started
 
-1. Define message types and AgentMessage hierarchy with extensible custom messages.
-2. Implement agent loop with steering and follow-up message handling.
-3. Add tool execution pipeline with parallel execution support.
-4. Implement event system for streaming updates and UI notifications.
-5. Create Agent class with state management and lifecycle methods.
-6. Add proxy pattern for server-side routing if needed.
-7. Create unit tests for agent logic.
+1. Mirror `pi-mono/packages/agent/src/types.ts` contracts in Python:
+   `AgentMessage` abstraction, agent context/state, tool/result types, event union, queue modes, tool execution modes, and hook context/result types.
+2. Implement low-level loop parity with `agent-loop.ts`:
+   `agent_loop()` and `agent_loop_continue()` behavior, `convert_to_llm` boundary, optional `transform_context`, dynamic API key resolver, and strict continue preconditions.
+3. Implement agent event lifecycle parity:
+   `agent_start/end`, `turn_start/end`, `message_start/update/end`, `tool_execution_start/update/end`, including ordering guarantees and terminal error/aborted handling.
+4. Implement tool execution parity:
+   sequential and parallel modes, per-tool mode override, preflight argument preparation/validation, `before_tool_call` blocking, `after_tool_call` override semantics, streaming tool updates, and batch `terminate` behavior.
+5. Implement steering/follow-up parity:
+   one-at-a-time vs all queue modes, queue drain/clear behavior, and turn-loop injection semantics matching `runLoop`.
+6. Implement high-level `Agent` class parity with `agent.ts`:
+   stateful wrapper, prompt normalization (text/image/message), `continue()`, abort/wait/reset, subscription semantics (await listeners in order), runtime streaming state, and queue APIs.
+7. Implement proxy transport parity with `proxy.ts`:
+   proxy stream function, proxy event decoding/reconstruction, partial tool-call JSON handling, and done/error finalization into assistant messages.
+8. Implement unit test parity against `packages/agent/test` behavior:
+   event order, continue edge cases, queue semantics, tool execution ordering in parallel/sequential, hook behavior, termination rules, and proxy stream parsing.
 
 ### Phase 4: Coding Agent CLI (py-coding-agent)
 
@@ -111,6 +120,7 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
 7. Validate event-stream compatibility against expected communication lifecycle semantics.
 8. Validate cross-provider handoff and context replay behavior with mixed-provider conversations.
 9. Validate abort/error/overflow communication paths and tool-call/tool-result edge cases.
+10. Validate `py-agent` behavior against `pi-mono/packages/agent` reference scenarios (loop, queues, tools, proxy) with explicit parity tests.
 
 **Decisions**
 

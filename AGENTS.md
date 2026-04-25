@@ -35,3 +35,4 @@ This project aims to recreate the Pi agentic framework using standard Python lib
 - You are not allowed to use --unsafe-fixes in ruff.
 - Avoid using cast() when possible.
 - Tests should focus on public APIs for libraries, avoiding private methods.
+- Avoid long chains of ifs. Look for alternatives, such as match/case statements or dispatch based on dictionaries.

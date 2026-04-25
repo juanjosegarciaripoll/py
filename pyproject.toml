@@ -28,3 +28,5 @@ explicit_package_bases = true
 [tool.pyright]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"
