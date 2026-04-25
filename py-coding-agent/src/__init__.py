@@ -12,6 +12,13 @@ from .compaction import CompactionSettings
 from .config import AppConfig, load_config
 from .extensions import AppEvent, EventBus, EventListener
 from .session import CompactionRecord, SessionRecord, SessionStore
+from .skills import (
+    SkillDatabase,
+    SkillError,
+    SkillNotFoundError,
+    SkillSummary,
+    SkillValidationError,
+)
 from .tools import (
     BashResult,
     BuiltinToolExecutor,
@@ -37,6 +44,11 @@ __all__ = [
     "RunConfig",
     "SessionRecord",
     "SessionStore",
+    "SkillDatabase",
+    "SkillError",
+    "SkillNotFoundError",
+    "SkillSummary",
+    "SkillValidationError",
     "ToolError",
     "ToolPermissionError",
     "ToolSandboxPolicy",

@@ -105,7 +105,25 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
    - Added sandbox policy checks for read/write/execute with allowed-root path confinement.
    - Integrated tool execution into RPC mode (`method="tool"`) with structured success/error payloads.
    - Added unit tests for tool behavior and sandbox policy denial paths.
-7. Add skills system with Markdown-based definitions.
+7. Add incremental skills system with folder-based loading.
+   Redefined scope:
+   - Each skill is a folder under a skills root; `SKILL.md` is required and optional extra files are loadable by relative path.
+   - Introduce a skill database object that supports progressive disclosure:
+     brief skill enumeration (`name`, `description`) without loading full content.
+   - Expose skill-management tools to the LLM:
+     `list_skills`, `list_skill_files`, `load_skill`.
+   - Add extra incremental tool:
+     `load_skill_file` to fetch one specific file only when needed.
+   - Add discovery helper:
+     `list_active_skill_tools` for runtime visibility after activation.
+   - Skill activation:
+     when loading with activation enabled, `<skill>/tool` is dynamically loaded as a Python module.
+   - Activated skill tools are exposed to the LLM as namespaced tool names (`skill.<skill-name>.<tool-name>`).
+   - No RPC coupling for skills:
+     skill loading/activation is handled directly in Python runtime objects.
+   Initial implementation completed:
+   - Added `SkillDatabase` with validation, listing, file loading, and activation flows.
+   - Added tests for listing/loading, path safety, and dynamic tool activation.
 8. Implement settings and configuration with TOML files. Initial defaults loading and CLI override behavior implemented.
 9. Create unit tests for CLI components.
 

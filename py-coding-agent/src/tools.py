@@ -49,7 +49,11 @@ class ToolError(Exception):
     def unknown_tool(cls, name: str) -> ToolError:
         """Create unknown-tool error."""
         message = f"Unknown tool: {name}"
-        return cls(message)
+        return UnknownToolError(message)
+
+
+class UnknownToolError(ToolError):
+    """Raised when a tool name is not handled by built-in tools."""
 
 
 class ToolPermissionError(ToolError):
