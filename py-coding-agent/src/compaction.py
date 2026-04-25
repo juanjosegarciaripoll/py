@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 MIN_RECORDS_FOR_COMPACTION = 2
 SUMMARY_ITEM_MAX_CHARS = 120
+OVERSIZED_PREFIX_MAX_CHARS = 240
 
 
 @dataclass(slots=True)
@@ -89,7 +90,11 @@ def compact_records(
     if not summarized or not kept:
         return None
 
-    summary = build_structured_summary(summarized=summarized, kept=kept)
+    summary = build_structured_summary(
+        summarized=summarized,
+        kept=kept,
+        keep_recent_tokens=settings.keep_recent_tokens,
+    )
     tokens_after = estimate_text_tokens(summary) + estimate_context_tokens(kept)
     return CompactionResult(
         summary=summary,
@@ -126,12 +131,17 @@ def build_structured_summary(
     *,
     summarized: list[SessionRecord],
     kept: list[SessionRecord],
+    keep_recent_tokens: int,
 ) -> str:
     """Build a deterministic structured summary compatible with future LLM replay."""
     last_prompt = summarized[-1].prompt.strip() if summarized else "(none)"
     done_items = _sample_lines([record.prompt for record in summarized], limit=5)
     progress_hint = kept[0].prompt.strip() if kept else "(none)"
     read_files, modified_files = _extract_file_tracking(summarized)
+    oversized_prefix = _extract_oversized_turn_prefix(
+        kept=kept,
+        keep_recent_tokens=keep_recent_tokens,
+    )
 
     lines = [
         "## Goal",
@@ -165,6 +175,19 @@ def build_structured_summary(
             "",
             "## Next Steps",
             "1. Continue from the most recent kept interactions.",
+        ]
+    )
+    if oversized_prefix is not None:
+        lines.extend(
+            [
+                "",
+                "## Oversized Turn Prefix",
+                oversized_prefix,
+            ]
+        )
+
+    lines.extend(
+        [
             "",
             "## Critical Context",
             "- Preserve exact file names, commands, and errors from kept turns.",
@@ -221,6 +244,27 @@ def _format_file_tracking(paths: list[str]) -> str:
     if not paths:
         return "(none)"
     return ", ".join(paths)
+
+
+def _extract_oversized_turn_prefix(
+    *,
+    kept: list[SessionRecord],
+    keep_recent_tokens: int,
+) -> str | None:
+    if not kept:
+        return None
+    first_kept = kept[0]
+    if estimate_interaction_tokens(first_kept) <= keep_recent_tokens:
+        return None
+    prompt_text = " ".join(first_kept.prompt.split()).strip()
+    response_text = " ".join(first_kept.response.split()).strip()
+    combined = f"Prompt: {prompt_text}\nResponse: {response_text}".strip()
+    if not combined:
+        return None
+    if len(combined) <= OVERSIZED_PREFIX_MAX_CHARS:
+        return combined
+    max_chars = OVERSIZED_PREFIX_MAX_CHARS - 3
+    return f"{combined[:max_chars]}..."
 
 
 def _as_str_object_dict(value: object) -> dict[str, object] | None:

@@ -125,6 +125,38 @@ class CompactionTests(unittest.TestCase):
         )
         assert result is None
 
+    def test_compact_records_adds_oversized_turn_prefix_section(self) -> None:
+        records = [
+            SessionRecord(
+                id="id-1",
+                timestamp_ms=1,
+                branch="main",
+                mode="print",
+                prompt="setup",
+                response="ok",
+            ),
+            SessionRecord(
+                id="id-2",
+                timestamp_ms=2,
+                branch="main",
+                mode="print",
+                prompt="latest " + ("x" * 400),
+                response="result " + ("y" * 400),
+            ),
+        ]
+        result = compact_records(
+            records=records,
+            context_window_tokens=80,
+            settings=CompactionSettings(
+                enabled=True,
+                reserve_tokens=20,
+                keep_recent_tokens=30,
+            ),
+        )
+        assert result is not None
+        assert "## Oversized Turn Prefix" in result.summary
+        assert "Prompt: latest" in result.summary
+
 
 if __name__ == "__main__":
     unittest.main()
