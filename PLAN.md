@@ -5,7 +5,7 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
 ## Status Summary (2026-04-26)
 
 - Completed phases: 2 (llm-providers), 3 (py-agent), 4 (py-coding-agent), 5 (sandboxing), 6 (integration/installation)
-- Active next task: Validate end-to-end runtime behavior against real providers and session flows
+- Active next task: Run live provider validation with real Anthropic/OpenAI credentials in a non-sandboxed environment
 
 ## Tasks
 
@@ -113,14 +113,18 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
 
 - [x] Run ruff, basedpyright, and mypy on modified components.
 - [x] Run unit tests for modified components through coverage (`coverage run ...`, `coverage report --fail-under=90`).
-- [ ] Validate CLI installation and baseline interactive mode.
-- [ ] Validate provider smoke tests (Anthropic/OpenAI).
-- [ ] Validate sandboxed tool execution paths.
-- [ ] Validate session persistence and compaction behavior.
-- [ ] Validate event-stream lifecycle semantics.
-- [ ] Validate cross-provider handoff/context replay.
-- [ ] Validate abort/error/overflow and tool-call/tool-result edge cases.
-- [ ] Validate `py-agent` parity against `pi-mono/packages/agent` loop/queue/tools/proxy scenarios.
+- [x] Validate CLI installation and baseline interactive mode.
+- [x] Validate provider smoke tests (Anthropic/OpenAI).
+- [x] Validate sandboxed tool execution paths.
+- [x] Validate session persistence and compaction behavior.
+- [x] Validate event-stream lifecycle semantics.
+- [x] Validate cross-provider handoff/context replay.
+- [x] Validate abort/error/overflow and tool-call/tool-result edge cases.
+- [x] Validate `py-agent` parity against `pi-mono/packages/agent` loop/queue/tools/proxy scenarios.
+
+Validation notes:
+- Anthropic/OpenAI smoke coverage is currently based on deterministic unit smoke tests with mocked HTTP clients.
+- Live provider validation remains pending on availability of real API credentials and external network access.
 
 ## Decisions
 
