@@ -42,6 +42,14 @@ allow_write = true
 allow_execute = true
 allowed_roots = ["."]
 
+[agent.runtime]
+backend = "echo"
+provider = "echo"
+model = "echo-1"
+api_key_env = "OPENAI_API_KEY"
+base_url = "http://localhost:11434/v1"
+system_prompt = "You are a helpful coding assistant."
+
 [agent.skills]
 root = ".py/skills"
 ```
@@ -85,6 +93,17 @@ root = ".py/skills"
 - `root` (`string`, default: `".py/skills"`)
   - Root directory containing skill folders for incremental skill loading.
 
+### `[agent.runtime]`
+
+- `backend` (`"echo" | "agent"`, default: `"echo"`)
+  - `echo`: deterministic local fallback response path.
+  - `agent`: integrated `py-agent` + `llm-providers` execution.
+- `provider` (`"echo" | "openai" | "anthropic" | "openai_compatible"`, default: `"echo"`)
+- `model` (`string`, default: `"echo-1"`)
+- `api_key_env` (`string`, optional)
+- `base_url` (`string`, optional; required for `openai_compatible`)
+- `system_prompt` (`string`, default: `"You are a helpful coding assistant."`)
+
 ## Validation Behavior
 
 - Unknown keys are ignored.
@@ -105,4 +124,12 @@ allowed_roots = ["py-coding-agent/src", "py-agent/src"]
 [agent.permissions]
 allow_read = true
 allow_write = false
+
+[agent.runtime]
+backend = "agent"
+provider = "openai_compatible"
+model = "qwen2.5-coder:14b"
+api_key_env = "OPENAI_API_KEY"
+base_url = "http://localhost:11434/v1"
+system_prompt = "You are a precise coding assistant."
 ```

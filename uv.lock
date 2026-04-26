@@ -408,12 +408,16 @@ name = "py-coding-agent"
 version = "0.1.0"
 source = { editable = "py-coding-agent" }
 dependencies = [
+    { name = "llm-providers" },
+    { name = "py-agent" },
     { name = "py-agent-tools" },
     { name = "textual" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "llm-providers", editable = "llm-providers" },
+    { name = "py-agent", editable = "py-agent" },
     { name = "py-agent-tools", editable = "py-agent-tools" },
     { name = "textual", specifier = ">=0.80,<1.0" },
 ]

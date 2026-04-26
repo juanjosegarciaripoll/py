@@ -30,6 +30,7 @@ from .extensions import (
     SessionBeforeCompactDecision,
     SessionBeforeCompactHook,
 )
+from .integration import AgenticResponder, AgentRuntimeError, RuntimeModelConfig
 from .session import CompactionRecord, SessionRecord, SessionStore
 from .skills import (
     SkillDatabase,
@@ -50,6 +51,8 @@ from .tools import (
 from .tui_controller import TuiCommandResult, TuiController
 
 __all__ = [
+    "AgentRuntimeError",
+    "AgenticResponder",
     "AppConfig",
     "AppEvent",
     "BashResult",
@@ -65,6 +68,7 @@ __all__ = [
     "ExecutionMode",
     "GrepMatch",
     "RunConfig",
+    "RuntimeModelConfig",
     "SessionBeforeCompactContext",
     "SessionBeforeCompactDecision",
     "SessionBeforeCompactHook",

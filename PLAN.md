@@ -4,9 +4,8 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
 
 ## Status Summary (2026-04-26)
 
-- Completed phases: 2 (llm-providers), 3 (py-agent), 4 (py-coding-agent), 5 (sandboxing)
-- Pending phase: 6 (integration/installation)
-- Active next task: Phase 6.1 integrate components (`py-coding-agent` with `py-agent` and `llm-providers`)
+- Completed phases: 2 (llm-providers), 3 (py-agent), 4 (py-coding-agent), 5 (sandboxing), 6 (integration/installation)
+- Active next task: Validate end-to-end runtime behavior against real providers and session flows
 
 ## Tasks
 
@@ -93,12 +92,12 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
 
 ### Phase 6: Integration and CLI Installation
 
-**Status:** Not started
+**Status:** Completed
 
-- [ ] Integrate components so `py-coding-agent` uses `py-agent` and `llm-providers`.
-- [ ] Set up CLI installation as a standalone program.
-- [ ] Add configuration loading and environment setup.
-- [ ] Implement system prompt construction with context injection.
+- [x] Integrate all three workspace libraries so `py-coding-agent` uses both `py-agent` and `llm-providers`.
+- [x] Set up CLI installation as a standalone program.
+- [x] Add configuration loading and environment setup for integrated runtime/provider selection.
+- [x] Implement system prompt construction with context injection.
 
 ## Relevant files
 

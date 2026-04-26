@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TextIO, cast
@@ -23,6 +25,11 @@ from .extensions import (
     SessionBeforeCompactContext,
     SessionBeforeCompactHook,
 )
+from .integration import (
+    AgenticResponder,
+    AgentRuntimeError,
+    RuntimeModelConfig,
+)
 from .session import CompactionRecord, SessionRecord, SessionStore, timestamp_ms
 from .tools import (
     BashResult,
@@ -34,7 +41,7 @@ from .tools import (
 from .tui import has_textual_dependency, launch_tui_mode
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Coroutine
 
 type CompactionSummaryGenerator = Callable[[CompactionSummaryRequest], str]
 
@@ -78,6 +85,14 @@ class RunConfig:
     tool_allowed_roots: tuple[str, ...] = ()
     skills_root: str = "skills"
     compaction_thinking_level: CompactionThinkingLevel = "medium"
+    runtime_backend: Literal["echo", "agent"] = "echo"
+    runtime_provider: Literal[
+        "echo", "openai", "anthropic", "openai_compatible"
+    ] = "echo"
+    runtime_model: str = "echo-1"
+    runtime_api_key_env: str | None = None
+    runtime_base_url: str | None = None
+    runtime_system_prompt: str = "You are a helpful coding assistant."
 
 
 @dataclass(slots=True)
@@ -163,6 +178,12 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
         tool_allowed_roots=defaults.tool_allowed_roots,
         skills_root=defaults.skills_root,
         compaction_thinking_level=defaults.compaction_thinking_level,
+        runtime_backend=defaults.runtime_backend,
+        runtime_provider=defaults.runtime_provider,
+        runtime_model=defaults.runtime_model,
+        runtime_api_key_env=defaults.runtime_api_key_env,
+        runtime_base_url=defaults.runtime_base_url,
+        runtime_system_prompt=defaults.runtime_system_prompt,
     )
 
 
@@ -178,6 +199,10 @@ class CodingAgentApp:
         self._event_bus = event_bus or EventBus()
         self._tool_executor = BuiltinToolExecutor(cwd=Path.cwd())
         self._compaction_summary_generator = compaction_summary_generator
+        self._active_run_config: RunConfig | None = None
+        self._active_store: SessionStore | None = None
+        self._active_persistence: _PersistenceContext | None = None
+        self._agentic_responder: AgenticResponder | None = None
 
     def subscribe(self, listener: EventListener) -> Callable[[], None]:
         """Subscribe to app events and return an unsubscribe callback."""
@@ -192,6 +217,17 @@ class CodingAgentApp:
 
     def respond(self, prompt: str) -> str:
         """Produce a deterministic response for the current prompt."""
+        if (
+            self._active_run_config is not None
+            and self._active_run_config.runtime_backend == "agent"
+        ):
+            try:
+                return self._respond_with_integrated_runtime(prompt)
+            except AgentRuntimeError:
+                text = prompt.strip()
+                if text:
+                    return f"Echo: {text}"
+                return "Echo: (empty prompt)"
         text = prompt.strip()
         if text:
             return f"Echo: {text}"
@@ -232,8 +268,10 @@ class CodingAgentApp:
         stdout: TextIO,
     ) -> int:
         """Run one mode and return process exit code."""
+        self._active_run_config = config
         self._configure_tools(config)
         store = self._build_store(config)
+        self._active_store = store
         compaction_settings = CompactionSettings(
             enabled=config.compaction_enabled,
             reserve_tokens=config.compaction_reserve_tokens,
@@ -246,6 +284,8 @@ class CodingAgentApp:
             compaction_settings=compaction_settings,
             compaction_thinking_level=config.compaction_thinking_level,
         )
+        self._active_persistence = persistence
+        self._agentic_responder = self._build_agentic_responder(config)
         match config.mode:
             case "interactive":
                 return self._run_interactive(
@@ -281,6 +321,48 @@ class CodingAgentApp:
                     persistence=persistence,
                     stdout=stdout,
                 )
+
+    def _build_agentic_responder(self, config: RunConfig) -> AgenticResponder | None:
+        if config.runtime_backend != "agent":
+            return None
+        return AgenticResponder(
+            RuntimeModelConfig(
+                backend=config.runtime_backend,
+                provider=config.runtime_provider,
+                model=config.runtime_model,
+                api_key_env=config.runtime_api_key_env,
+                base_url=config.runtime_base_url,
+            )
+        )
+
+    def _respond_with_integrated_runtime(self, prompt: str) -> str:
+        responder = self._agentic_responder
+        if responder is None:
+            msg = "Integrated responder is not configured."
+            raise AgentRuntimeError(msg)
+        system_prompt = self._build_system_prompt()
+        return _run_async_maybe_threadsafe(
+            responder.respond(prompt, system_prompt=system_prompt)
+        )
+
+    def _build_system_prompt(self) -> str:
+        config = self._active_run_config
+        if config is None:
+            return "You are a helpful coding assistant."
+        lines = [config.runtime_system_prompt.strip()]
+        persistence = self._active_persistence
+        if persistence is not None:
+            lines.append(f"Branch: {persistence.branch}")
+        lines.append(f"Mode: {config.mode}")
+        store = self._active_store
+        if store is not None:
+            recent = store.load()[-2:]
+            if recent:
+                lines.append("Recent session context:")
+                for item in recent:
+                    lines.append(f"User: {item.prompt}")
+                    lines.append(f"Assistant: {item.response}")
+        return "\n".join(line for line in lines if line)
 
     def _configure_tools(self, config: RunConfig) -> None:
         if config.tool_allowed_roots:
@@ -808,3 +890,12 @@ def _split_records_by_first_kept_id(
         if record.id == first_kept_id:
             return (records[:index], records[index:])
     return ([], [])
+
+
+def _run_async_maybe_threadsafe(coro: Coroutine[object, object, str]) -> str:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(lambda: asyncio.run(coro)).result()

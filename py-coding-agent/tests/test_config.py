@@ -238,6 +238,33 @@ class ConfigTests(unittest.TestCase):
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 
+    def test_load_config_reads_runtime_section(self) -> None:
+        test_dir = TMP_DIR / "config-runtime"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        path = test_dir / "agent.toml"
+        path.write_text(
+            "[agent]\n"
+            "[agent.runtime]\n"
+            "backend='agent'\n"
+            "provider='openai_compatible'\n"
+            "model='coder-model'\n"
+            "api_key_env='OPENAI_API_KEY'\n"
+            "base_url='http://localhost:11434/v1'\n"
+            "system_prompt='You are integrated.'\n",
+            encoding="utf-8",
+        )
+        try:
+            config = load_config(path)
+            assert config.runtime_backend == "agent"
+            assert config.runtime_provider == "openai_compatible"
+            assert config.runtime_model == "coder-model"
+            assert config.runtime_api_key_env == "OPENAI_API_KEY"
+            assert config.runtime_base_url == "http://localhost:11434/v1"
+            assert config.runtime_system_prompt == "You are integrated."
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()

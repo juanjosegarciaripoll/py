@@ -11,6 +11,8 @@ from typing import Literal, cast
 type JsonObject = dict[str, object]
 type ExecutionMode = Literal["interactive", "print", "json", "rpc", "tui"]
 type CompactionThinkingLevel = Literal["low", "medium", "high"]
+type RuntimeBackend = Literal["echo", "agent"]
+type RuntimeProvider = Literal["echo", "openai", "anthropic", "openai_compatible"]
 
 
 @dataclass(slots=True)
@@ -30,6 +32,12 @@ class AppConfig:
     tool_allow_execute: bool = True
     tool_allowed_roots: tuple[str, ...] = ()
     skills_root: str = ".py/skills"
+    runtime_backend: RuntimeBackend = "echo"
+    runtime_provider: RuntimeProvider = "echo"
+    runtime_model: str = "echo-1"
+    runtime_api_key_env: str | None = None
+    runtime_base_url: str | None = None
+    runtime_system_prompt: str = "You are a helpful coding assistant."
 
 
 def load_config(path: Path | None) -> AppConfig:
@@ -66,6 +74,14 @@ def load_config(path: Path | None) -> AppConfig:
         tool_allowed_roots,
     ) = _parse_permissions(agent, defaults)
     skills_root = _parse_skills(agent, defaults)
+    (
+        runtime_backend,
+        runtime_provider,
+        runtime_model,
+        runtime_api_key_env,
+        runtime_base_url,
+        runtime_system_prompt,
+    ) = _parse_runtime(agent, defaults)
     return AppConfig(
         mode=mode,
         branch=branch,
@@ -80,6 +96,12 @@ def load_config(path: Path | None) -> AppConfig:
         tool_allow_execute=tool_allow_execute,
         tool_allowed_roots=tool_allowed_roots,
         skills_root=skills_root,
+        runtime_backend=runtime_backend,
+        runtime_provider=runtime_provider,
+        runtime_model=runtime_model,
+        runtime_api_key_env=runtime_api_key_env,
+        runtime_base_url=runtime_base_url,
+        runtime_system_prompt=runtime_system_prompt,
     )
 
 
@@ -180,6 +202,38 @@ def _parse_skills(agent: JsonObject, defaults: AppConfig) -> str:
     return _as_nonempty_str(skills.get("root"), defaults.skills_root)
 
 
+def _parse_runtime(
+    agent: JsonObject,
+    defaults: AppConfig,
+) -> tuple[RuntimeBackend, RuntimeProvider, str, str | None, str | None, str]:
+    runtime = _as_str_object_dict(agent.get("runtime"))
+    if runtime is None:
+        return (
+            defaults.runtime_backend,
+            defaults.runtime_provider,
+            defaults.runtime_model,
+            defaults.runtime_api_key_env,
+            defaults.runtime_base_url,
+            defaults.runtime_system_prompt,
+        )
+    backend = _as_runtime_backend(
+        runtime.get("backend"),
+        default=defaults.runtime_backend,
+    )
+    provider = _as_runtime_provider(
+        runtime.get("provider"),
+        default=defaults.runtime_provider,
+    )
+    model = _as_nonempty_str(runtime.get("model"), defaults.runtime_model)
+    api_key_env = _as_optional_str(runtime.get("api_key_env"))
+    base_url = _as_optional_str(runtime.get("base_url"))
+    system_prompt = _as_nonempty_str(
+        runtime.get("system_prompt"),
+        defaults.runtime_system_prompt,
+    )
+    return (backend, provider, model, api_key_env, base_url, system_prompt)
+
+
 def resolve_config_path(path: Path | None) -> Path | None:
     """Resolve explicit or default config path."""
     if path is not None:
@@ -278,4 +332,24 @@ def _as_compaction_thinking_level(
 ) -> CompactionThinkingLevel:
     if value in {"low", "medium", "high"}:
         return cast("CompactionThinkingLevel", value)
+    return default
+
+
+def _as_runtime_backend(
+    value: object,
+    *,
+    default: RuntimeBackend,
+) -> RuntimeBackend:
+    if value in {"echo", "agent"}:
+        return cast("RuntimeBackend", value)
+    return default
+
+
+def _as_runtime_provider(
+    value: object,
+    *,
+    default: RuntimeProvider,
+) -> RuntimeProvider:
+    if value in {"echo", "openai", "anthropic", "openai_compatible"}:
+        return cast("RuntimeProvider", value)
     return default

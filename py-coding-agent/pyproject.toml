@@ -4,10 +4,12 @@ version = "0.1.0"
 description = "CLI coding agent"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = ["py-agent-tools", "textual>=0.80,<1.0"]
+dependencies = ["py-agent-tools", "py-agent", "llm-providers", "textual>=0.80,<1.0"]
 
 [tool.uv.sources]
 py-agent-tools = { workspace = true }
+py-agent = { workspace = true }
+llm-providers = { workspace = true }
 
 [project.scripts]
 py-coding-agent = "src.cli:main"

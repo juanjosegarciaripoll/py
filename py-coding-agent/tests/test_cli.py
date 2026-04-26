@@ -164,6 +164,29 @@ class CliTests(unittest.TestCase):
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 
+    def test_parse_args_loads_runtime_defaults(self) -> None:
+        test_dir = TMP_DIR / "cli-runtime-config"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        config_path = test_dir / "agent.toml"
+        config_path.write_text(
+            "[agent]\n"
+            "[agent.runtime]\n"
+            "backend='agent'\n"
+            "provider='echo'\n"
+            "model='echo-2'\n"
+            "system_prompt='Runtime enabled.'\n",
+            encoding="utf-8",
+        )
+        try:
+            config = parse_args(["--config", str(config_path), "--mode", "print", "a"])
+            assert config.runtime_backend == "agent"
+            assert config.runtime_provider == "echo"
+            assert config.runtime_model == "echo-2"
+            assert config.runtime_system_prompt == "Runtime enabled."
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
     def test_parse_args_rejects_invalid_mode(self) -> None:
         error: BaseException | None = None
         try:
@@ -193,6 +216,28 @@ class CliTests(unittest.TestCase):
         )
         assert exit_code == 0
         assert stdout.getvalue() == "Echo: hello\n"
+
+    def test_run_print_mode_with_agent_backend_uses_integrated_responder(self) -> None:
+        class StubIntegratedApp(CodingAgentApp):
+            def _respond_with_integrated_runtime(self, prompt: str) -> str:
+                return f"Integrated: {prompt} ({self._build_system_prompt()})"
+
+        app = StubIntegratedApp()
+        stdout = io.StringIO()
+        exit_code = app.run(
+            RunConfig(
+                mode="print",
+                prompt="hello",
+                session_file=None,
+                branch="main",
+                config_file=None,
+                runtime_backend="agent",
+            ),
+            stdin=io.StringIO(),
+            stdout=stdout,
+        )
+        assert exit_code == 0
+        assert stdout.getvalue().startswith("Integrated: hello")
 
     def test_run_json_mode(self) -> None:
         app = CodingAgentApp()
