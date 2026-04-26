@@ -5,12 +5,12 @@ import unittest
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.api_registry import ApiRegistry, get_api_key
-from src.auth import ApiKeyStore
-from src.provider import Provider
-from src.types import AssistantMessageEvent, Message, Role, TextContent, Tool
+from llm_providers.api_registry import ApiRegistry, get_api_key
+from llm_providers.auth import ApiKeyStore
+from llm_providers.provider import Provider
+from llm_providers.types import AssistantMessageEvent, Message, Role, TextContent, Tool
 
 
 class DummyProvider(Provider):
@@ -118,3 +118,4 @@ class ApiRegistryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

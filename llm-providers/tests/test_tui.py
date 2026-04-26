@@ -7,10 +7,10 @@ import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.model_registry import ModelDefinition, ModelRegistry
-from src.tui import configure_providers_interactive, select_provider
+from llm_providers.model_registry import ModelDefinition, ModelRegistry
+from llm_providers.tui import configure_providers_interactive, select_provider
 
 EXPECTED_TWO_PROVIDERS = 2
 
@@ -295,3 +295,4 @@ class ConfigureProvidersInteractiveTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

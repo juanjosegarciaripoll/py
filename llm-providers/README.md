@@ -11,17 +11,17 @@ It provides a shared provider interface, common message/tool types, and concrete
 
 ## Package Layout
 
-- `src/types.py`: Provider stream-facing dataclasses and JSON typing aliases.
-- `src/communication.py`: Unified communication schema (Pydantic models), event stream protocol, serialization, handoff/normalization utilities.
-- `src/provider.py`: Single abstract `Provider` base class with message-conversion dispatch hooks.
-- `src/api_registry.py`: Provider registry and API-key helper.
-- `src/auth.py`: API key store + OAuth token models/store.
-- `src/config.py`: Pydantic provider configuration models.
-- `src/model_registry.py`, `src/generated_models.py`, `src/models.py`: Model metadata registry.
-- `src/tui.py`: Interactive provider configuration helper.
-- `src/providers/anthropic.py`: Anthropic streaming + message/tool conversion.
-- `src/providers/openai.py`: OpenAI chat-completions streaming + message/tool conversion.
-- `src/providers/openai_compatible.py`: OpenAI-compatible provider (inherits OpenAI behavior, custom base URL).
+- `llm_providers.types`: Provider stream-facing dataclasses and JSON typing aliases.
+- `llm_providers.communication`: Unified communication schema (Pydantic models), event stream protocol, serialization, handoff/normalization utilities.
+- `llm_providers.provider`: Single abstract `Provider` base class with message-conversion dispatch hooks.
+- `llm_providers.api_registry`: Provider registry and API-key helper.
+- `llm_providers.auth`: API key store + OAuth token models/store.
+- `llm_providers.config`: Pydantic provider configuration models.
+- `llm_providers.model_registry`, `llm_providers.generated_models`, `llm_providers.models`: Model metadata registry.
+- `llm_providers.tui`: Interactive provider configuration helper.
+- `llm_providers.providers.anthropic`: Anthropic streaming + message/tool conversion.
+- `llm_providers.providers.openai`: OpenAI chat-completions streaming + message/tool conversion.
+- `llm_providers.providers.openai_compatible`: OpenAI-compatible provider (inherits OpenAI behavior, custom base URL).
 
 ## Core Interfaces
 
@@ -40,7 +40,7 @@ Message conversion is standardized in the same base class:
 
 ### Communication API
 
-`src/communication.py` defines unified multi-provider message/event models:
+`llm_providers.communication` defines unified multi-provider message/event models:
 
 - Messages: `UserMessage`, `AssistantMessage`, `ToolResultMessage`, `Context`
 - Events: `start`, `text_*`, `thinking_*`, `toolcall_*`, `done`, `error`
@@ -49,8 +49,8 @@ Message conversion is standardized in the same base class:
 ## Basic Usage
 
 ```python
-from llm_providers.src.providers.openai import OpenAIProvider
-from llm_providers.src.types import Message, Role, TextContent
+from llm_providers.providers.openai import OpenAIProvider
+from llm_providers.types import Message, Role, TextContent
 
 provider = OpenAIProvider(api_key="...")
 messages = [

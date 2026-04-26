@@ -6,11 +6,11 @@ import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.generated_models import GENERATED_MODEL_DEFINITIONS
-from src.model_registry import ModelDefinition, ModelRegistry
-from src.models import MODEL_REGISTRY
+from llm_providers.generated_models import GENERATED_MODEL_DEFINITIONS
+from llm_providers.model_registry import ModelDefinition, ModelRegistry
+from llm_providers.models import MODEL_REGISTRY
 
 EXPECTED_MINI_MAX_OUTPUT_TOKENS = 16_384
 
@@ -71,3 +71,4 @@ class ModelRegistryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

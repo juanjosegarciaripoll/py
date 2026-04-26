@@ -12,15 +12,15 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Sequence
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.agent_loop import (
+from py_agent.agent_loop import (
     agent_loop,
     agent_loop_continue,
     run_agent_loop,
     run_agent_loop_continue,
 )
-from src.types import (
+from py_agent.types import (
     AbortSignal,
     AfterToolCallContext,
     AfterToolCallResult,
@@ -802,3 +802,4 @@ class AgentLoopTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

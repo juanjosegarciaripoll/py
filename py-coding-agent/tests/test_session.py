@@ -7,9 +7,9 @@ import shutil
 import unittest
 from pathlib import Path
 
-from src import session
-from src.compaction import CompactionSettings
-from src.session import CompactionRecord, SessionRecord, SessionStore
+from py_coding_agent import session
+from py_coding_agent.compaction import CompactionSettings
+from py_coding_agent.session import CompactionRecord, SessionRecord, SessionStore
 
 TMP_DIR = Path(__file__).resolve().parent / ".tmp"
 TOTAL_INTERACTIONS = 10
@@ -161,3 +161,4 @@ class SessionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

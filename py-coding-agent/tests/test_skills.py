@@ -6,7 +6,7 @@ import shutil
 import unittest
 from pathlib import Path
 
-from src.skills import SkillDatabase, SkillValidationError
+from py_coding_agent.skills import SkillDatabase, SkillValidationError
 
 TMP_DIR = Path(__file__).resolve().parent / ".tmp"
 
@@ -92,3 +92,4 @@ class SkillTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -7,7 +7,7 @@ import shutil
 import unittest
 from pathlib import Path
 
-from src.config import (
+from py_coding_agent.config import (
     AppConfig,
     default_config_path,
     load_config,
@@ -268,3 +268,4 @@ class ConfigTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

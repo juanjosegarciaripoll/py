@@ -10,16 +10,16 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.proxy import (
+from py_agent.proxy import (
     ProxyMessageEventStream,
     ProxyStreamOptions,
     parse_streaming_json,
     process_proxy_event,
     stream_proxy_from_events,
 )
-from src.types import (
+from py_agent.types import (
     AssistantMessage,
     ErrorEvent,
     JsonObject,
@@ -313,3 +313,4 @@ class ProxyTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -9,6 +9,12 @@ dependencies = []
 [tool.uv.workspace]
 members = ["llm-providers", "py-agent", "py-agent-tools", "py-coding-agent"]
 
+[tool.uv.sources]
+llm-providers = { workspace = true }
+py-agent = { workspace = true }
+py-agent-tools = { workspace = true }
+py-coding-agent = { workspace = true }
+
 [dependency-groups]
 dev = ["ruff", "basedpyright", "mypy", "coverage[toml]>=7.0", "httpx", "pydantic>=2.0,<3.0"]
 
@@ -25,14 +31,24 @@ ignore = ["S101", "COM812", "ISC001", "TID252"]
 python_version = "3.13"
 strict = true
 explicit_package_bases = true
-mypy_path = ["py-agent-tools/src"]
+mypy_path = [
+  "llm-providers/src",
+  "py-agent/src",
+  "py-agent-tools/src",
+  "py-coding-agent/src",
+]
 
 [tool.pyright]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
-extraPaths = ["py-agent-tools/src"]
+extraPaths = [
+  "llm-providers/src",
+  "py-agent/src",
+  "py-agent-tools/src",
+  "py-coding-agent/src",
+]
 
 [tool.coverage.run]
 omit = ["py-agent-tools/tests/.tmp/*", "py-coding-agent/tests/.tmp/*"]

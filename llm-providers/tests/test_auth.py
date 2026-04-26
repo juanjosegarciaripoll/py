@@ -9,9 +9,9 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.auth import ApiKeyStore, OAuthToken, OAuthTokenStore
+from llm_providers.auth import ApiKeyStore, OAuthToken, OAuthTokenStore
 
 
 class OAuthTokenTests(unittest.TestCase):
@@ -114,3 +114,4 @@ class OAuthTokenStoreTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

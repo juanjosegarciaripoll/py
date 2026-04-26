@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from src.tui_controller import TuiController
+from py_coding_agent.tui_controller import TuiController
 
 
 class TuiControllerTests(unittest.TestCase):
@@ -49,3 +49,4 @@ class TuiControllerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

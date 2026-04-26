@@ -12,10 +12,10 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.agent import Agent, AgentOptions
-from src.types import (
+from py_agent.agent import Agent, AgentOptions
+from py_agent.types import (
     AbortSignal,
     AgentEvent,
     AgentLoopConfig,
@@ -621,3 +621,4 @@ class AgentTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

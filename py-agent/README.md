@@ -18,11 +18,11 @@ Stateful agent runtime for Python, modeled after `pi-mono/packages/agent`.
 
 ## Public modules
 
-- [src/__init__.py](/c:/Users/juanj/src/py/py-agent/src/__init__.py)
-- [src/types.py](/c:/Users/juanj/src/py/py-agent/src/types.py)
-- [src/agent_loop.py](/c:/Users/juanj/src/py/py-agent/src/agent_loop.py)
-- [src/agent.py](/c:/Users/juanj/src/py/py-agent/src/agent.py)
-- [src/proxy.py](/c:/Users/juanj/src/py/py-agent/src/proxy.py)
+- `py_agent`
+- `py_agent.types`
+- `py_agent.agent_loop`
+- `py_agent.agent`
+- `py_agent.proxy`
 
 ## Test suite
 

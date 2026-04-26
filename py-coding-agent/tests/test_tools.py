@@ -6,7 +6,11 @@ import shutil
 import unittest
 from pathlib import Path
 
-from src.tools import BuiltinToolExecutor, ToolPermissionError, ToolSandboxPolicy
+from py_coding_agent.tools import (
+    BuiltinToolExecutor,
+    ToolPermissionError,
+    ToolSandboxPolicy,
+)
 
 TMP_DIR = Path(__file__).resolve().parent / ".tmp"
 ALPHA_MATCH_COUNT = 2
@@ -227,3 +231,4 @@ class ToolTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

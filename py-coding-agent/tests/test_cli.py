@@ -10,10 +10,10 @@ import unittest
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src import session
-from src.cli import (
+from py_coding_agent import session
+from py_coding_agent.cli import (
     CodingAgentApp,
     ContextOverflowError,
     RunConfig,
@@ -21,12 +21,12 @@ from src.cli import (
     main,
     parse_args,
 )
-from src.extensions import SessionBeforeCompactDecision
-from src.session import SessionStore
+from py_coding_agent.extensions import SessionBeforeCompactDecision
+from py_coding_agent.session import SessionStore
 
 if TYPE_CHECKING:
-    from src.compaction import CompactionSummaryRequest
-    from src.extensions import AppEvent, SessionBeforeCompactContext
+    from py_coding_agent.compaction import CompactionSummaryRequest
+    from py_coding_agent.extensions import AppEvent, SessionBeforeCompactContext
 
 ARGPARSE_ERROR_EXIT_CODE = 2
 TMP_DIR = Path(__file__).resolve().parent / ".tmp"
@@ -908,3 +908,4 @@ class CliTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

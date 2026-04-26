@@ -10,10 +10,10 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.auth import OAuthToken
-from src.config import ProviderConfig, ProvidersConfig
+from llm_providers.auth import OAuthToken
+from llm_providers.config import ProviderConfig, ProvidersConfig
 
 
 class ProviderConfigTests(unittest.TestCase):
@@ -88,3 +88,4 @@ class ProvidersConfigTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

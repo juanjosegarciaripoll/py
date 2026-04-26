@@ -15,7 +15,7 @@ try:
     )
 except ModuleNotFoundError:
     tools_src = (
-        Path(__file__).resolve().parents[2] / "py-agent-tools" / "src"
+        Path(__file__).resolve().parents[3] / "py-agent-tools" / "src"
     )
     sys.path.insert(0, str(tools_src))
     from py_agent_tools import (

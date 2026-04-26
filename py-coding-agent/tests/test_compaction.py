@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import unittest
 
-from src.compaction import (
+from py_coding_agent.compaction import (
     CompactionSettings,
     compact_records,
     estimate_context_tokens,
     should_compact,
 )
-from src.session import SessionRecord
+from py_coding_agent.session import SessionRecord
 
 CONTEXT_WINDOW = 1_000
 RESERVE_TOKENS = 100
@@ -160,3 +160,4 @@ class CompactionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

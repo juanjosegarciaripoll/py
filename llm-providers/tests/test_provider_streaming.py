@@ -12,12 +12,18 @@ from unittest.mock import patch
 
 import httpx
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.providers.anthropic import AnthropicProvider
-from src.providers.openai import OpenAIProvider
-from src.providers.openai_compatible import OpenAICompatibleProvider
-from src.types import AssistantMessageEvent, Message, Role, TextContent, ToolCall
+from llm_providers.providers.anthropic import AnthropicProvider
+from llm_providers.providers.openai import OpenAIProvider
+from llm_providers.providers.openai_compatible import OpenAICompatibleProvider
+from llm_providers.types import (
+    AssistantMessageEvent,
+    Message,
+    Role,
+    TextContent,
+    ToolCall,
+)
 
 OPENAI_EXPECTED_EVENT_COUNT = 3
 OPENAI_EXPECTED_TOTAL_TOKENS = 3
@@ -214,7 +220,7 @@ class OpenAIProviderStreamingTests(unittest.TestCase):
         )
 
         with patch(
-            "src.providers.openai.httpx.AsyncClient",
+            "llm_providers.providers.openai.httpx.AsyncClient",
             return_value=FakeAsyncClient(lines, calls),
         ):
             events = asyncio.run(_collect_events(provider, [messages[0], tool_message]))
@@ -270,7 +276,7 @@ class OpenAICompatibleStreamingTests(unittest.TestCase):
         ]
 
         with patch(
-            "src.providers.openai.httpx.AsyncClient",
+            "llm_providers.providers.openai.httpx.AsyncClient",
             return_value=FakeAsyncClient(lines, calls),
         ):
             events = asyncio.run(_collect_events(provider, messages))
@@ -289,7 +295,7 @@ class OpenAICompatibleStreamingTests(unittest.TestCase):
             base_url="http://localhost:11434/",
         )
         with patch(
-            "src.providers.openai.httpx.Client",
+            "llm_providers.providers.openai.httpx.Client",
             return_value=FakeSyncClient(calls),
         ):
             ok, detail = provider.check_model_access("llama3")
@@ -331,7 +337,7 @@ class AnthropicStreamingTests(unittest.TestCase):
         ]
 
         with patch(
-            "src.providers.anthropic.httpx.AsyncClient",
+            "llm_providers.providers.anthropic.httpx.AsyncClient",
             return_value=FakeAsyncClient(lines, calls),
         ):
             events = asyncio.run(_collect_events(provider, messages))
@@ -349,7 +355,7 @@ class AnthropicStreamingTests(unittest.TestCase):
         calls: list[RequestCall] = []
         provider = AnthropicProvider(api_key="test-key")
         with patch(
-            "src.providers.anthropic.httpx.Client",
+            "llm_providers.providers.anthropic.httpx.Client",
             return_value=FakeSyncClient(calls),
         ):
             ok, detail = provider.check_model_access("claude-3-5-haiku-20241022")
@@ -410,7 +416,7 @@ class AnthropicStreamingTests(unittest.TestCase):
         ]
 
         with patch(
-            "src.providers.anthropic.httpx.AsyncClient",
+            "llm_providers.providers.anthropic.httpx.AsyncClient",
             return_value=FakeAsyncClient(lines, calls),
         ):
             events = asyncio.run(_collect_events(provider, messages))
@@ -455,7 +461,7 @@ class AnthropicStreamingTests(unittest.TestCase):
         assert second_content[0]["type"] == "tool_result"
 
         with patch(
-            "src.providers.anthropic.httpx.Client",
+            "llm_providers.providers.anthropic.httpx.Client",
             return_value=FakeSyncClient([], should_raise=True),
         ):
             ok, detail = provider.check_model_access("claude-3-5-haiku-20241022")
@@ -471,7 +477,7 @@ class OpenAIAccessibilityTests(unittest.TestCase):
         calls: list[RequestCall] = []
         provider = OpenAIProvider(api_key="test-key")
         with patch(
-            "src.providers.openai.httpx.Client",
+            "llm_providers.providers.openai.httpx.Client",
             return_value=FakeSyncClient(calls),
         ):
             ok, detail = provider.check_model_access("gpt-4o-mini")
@@ -484,7 +490,7 @@ class OpenAIAccessibilityTests(unittest.TestCase):
     def test_check_model_access_failure(self) -> None:
         provider = OpenAIProvider(api_key="test-key")
         with patch(
-            "src.providers.openai.httpx.Client",
+            "llm_providers.providers.openai.httpx.Client",
             return_value=FakeSyncClient([], should_raise=True),
         ):
             ok, detail = provider.check_model_access("gpt-4o-mini")
@@ -550,7 +556,7 @@ class OpenAIToolCallParsingTests(unittest.TestCase):
         ]
 
         with patch(
-            "src.providers.openai.httpx.AsyncClient",
+            "llm_providers.providers.openai.httpx.AsyncClient",
             return_value=FakeAsyncClient(lines, calls),
         ):
             events = asyncio.run(_collect_events(provider, messages))
@@ -571,3 +577,5 @@ class OpenAIToolCallParsingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+

@@ -9,11 +9,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.types import JsonObject
+    from llm_providers.types import JsonObject
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.communication import (
+from llm_providers.communication import (
     AssistantMessage,
     AssistantMessageEventStream,
     Context,
@@ -354,3 +354,4 @@ class CommunicationEventStreamTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

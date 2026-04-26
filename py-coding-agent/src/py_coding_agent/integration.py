@@ -106,11 +106,17 @@ class AgenticResponder:
         self._config = model_config
         self._py_agent = _load_workspace_package(
             package_name="_py_workspace_agent",
-            package_root=Path(__file__).resolve().parents[2] / "py-agent" / "src",
+            package_root=Path(__file__).resolve().parents[3]
+            / "py-agent"
+            / "src"
+            / "py_agent",
         )
         self._llm_providers = _load_workspace_package(
             package_name="_py_workspace_llm_providers",
-            package_root=Path(__file__).resolve().parents[2] / "llm-providers" / "src",
+            package_root=Path(__file__).resolve().parents[3]
+            / "llm-providers"
+            / "src"
+            / "llm_providers",
         )
         self._llm_types = importlib.import_module("_py_workspace_llm_providers.types")
         self._py_agent_types = importlib.import_module("_py_workspace_agent.types")

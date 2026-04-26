@@ -4,8 +4,16 @@ from __future__ import annotations
 
 import os
 import unittest
+from typing import TYPE_CHECKING
 
-from src.integration import AgenticResponder, AgentRuntimeError, RuntimeModelConfig
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+from py_coding_agent.integration import (
+    AgenticResponder,
+    AgentRuntimeError,
+    RuntimeModelConfig,
+)
 
 
 class IntegrationTests(unittest.IsolatedAsyncioTestCase):
@@ -41,7 +49,7 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
                 system_prompt: str,
                 messages: list[object],
                 tools: list[object],
-            ):
+            ) -> AsyncIterator[object]:
                 del model, system_prompt, messages, tools
                 delta = llm.Message(
                     role=llm.Role.ASSISTANT,
@@ -116,3 +124,4 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

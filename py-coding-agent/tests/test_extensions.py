@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import unittest
 
-from src.compaction import CompactionSettings
-from src.extensions import (
+from py_coding_agent.compaction import CompactionSettings
+from py_coding_agent.extensions import (
     AppEvent,
     EventBus,
     SessionBeforeCompactContext,
@@ -94,3 +94,4 @@ class ExtensionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
