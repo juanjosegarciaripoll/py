@@ -36,6 +36,12 @@ allow_write = true
 allow_execute = true
 allowed_roots = ["."]
 
+[agent.permissions]
+allow_read = true
+allow_write = true
+allow_execute = true
+allowed_roots = ["."]
+
 [agent.skills]
 root = ".py/skills"
 ```
@@ -64,6 +70,16 @@ root = ".py/skills"
   - When empty, tools default to current working directory confinement.
   - Relative paths are resolved from process working directory.
 
+### `[agent.permissions]`
+
+- `allow_read` (`bool`, default: `true`)
+- `allow_write` (`bool`, default: `true`)
+- `allow_execute` (`bool`, default: `true`)
+- `allowed_roots` (`array[string]`, default: empty)
+  - Same behavior as `[agent.tools]`.
+  - When both `[agent.tools]` and `[agent.permissions]` are present, values in
+    `[agent.permissions]` take precedence.
+
 ### `[agent.skills]`
 
 - `root` (`string`, default: `".py/skills"`)
@@ -85,4 +101,8 @@ branch = "main"
 [agent.tools]
 allow_execute = false
 allowed_roots = ["py-coding-agent/src", "py-agent/src"]
+
+[agent.permissions]
+allow_read = true
+allow_write = false
 ```

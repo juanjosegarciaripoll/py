@@ -4,10 +4,9 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
 
 ## Status Summary (2026-04-26)
 
-- Completed phases: 2 (llm-providers), 3 (py-agent), 4 (py-coding-agent)
-- In-progress phase: 5 (sandboxing)
+- Completed phases: 2 (llm-providers), 3 (py-agent), 4 (py-coding-agent), 5 (sandboxing)
 - Pending phase: 6 (integration/installation)
-- Active next task: Phase 5.2 runtime safety limits for safe bash + strict behavior docs
+- Active next task: Phase 6.1 integrate components (`py-coding-agent` with `py-agent` and `llm-providers`)
 
 ## Tasks
 
@@ -75,7 +74,7 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
 
 ### Phase 5: Sandboxing Implementation
 
-**Status:** In progress
+**Status:** Completed
 
 - [x] Define permission system for read/write/execute policies.
 - [x] Implement safe bash interpreter as Python-based sh subset parser.
@@ -90,7 +89,7 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
   - [x] Implement built-in command handlers: `grep`, `ls`, `dir`, `cd`, `pwd`, `cp`, `mv`, `cat`, `head`, `tail`, `mkdir`.
   - [x] Add execution safety limits (timeouts/output size/pipeline/command bounds) and strict behavior docs.
 - [x] Integrate permissions into read, write, and bash tools.
-- [ ] Add configuration options for permission policies.
+- [x] Add configuration options for permission policies.
 
 ### Phase 6: Integration and CLI Installation
 

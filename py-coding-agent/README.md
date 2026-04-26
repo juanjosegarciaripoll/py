@@ -8,6 +8,7 @@ Current implementation status:
 - Modes: `interactive`, `print`, `json`, `rpc`, `tui`
 - Optional JSONL session persistence with branch support
 - Optional TOML config defaults (`[agent]` section)
+- Sandbox permission policy config via `[agent.permissions]` (or legacy `[agent.tools]`)
 - Initial extension hooks via event bus (`interaction_complete`)
 - Unit tests for parsing and mode behavior
 

@@ -120,6 +120,56 @@ class ConfigTests(unittest.TestCase):
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 
+    def test_load_config_reads_permissions_section(self) -> None:
+        test_dir = TMP_DIR / "config-permissions"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        path = test_dir / "agent.toml"
+        path.write_text(
+            "[agent]\n"
+            "[agent.permissions]\n"
+            "allow_read=true\n"
+            "allow_write=false\n"
+            "allow_execute=false\n"
+            "allowed_roots=['workspace']\n",
+            encoding="utf-8",
+        )
+        try:
+            config = load_config(path)
+            assert config.tool_allow_read is True
+            assert config.tool_allow_write is False
+            assert config.tool_allow_execute is False
+            assert config.tool_allowed_roots == ("workspace",)
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_permissions_section_overrides_tools_section(self) -> None:
+        test_dir = TMP_DIR / "config-permissions-overrides-tools"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        path = test_dir / "agent.toml"
+        path.write_text(
+            "[agent]\n"
+            "[agent.tools]\n"
+            "allow_read=false\n"
+            "allow_write=true\n"
+            "allow_execute=true\n"
+            "allowed_roots=['tools-root']\n"
+            "[agent.permissions]\n"
+            "allow_read=true\n"
+            "allow_execute=false\n"
+            "allowed_roots=['permissions-root']\n",
+            encoding="utf-8",
+        )
+        try:
+            config = load_config(path)
+            assert config.tool_allow_read is True
+            assert config.tool_allow_write is True
+            assert config.tool_allow_execute is False
+            assert config.tool_allowed_roots == ("permissions-root",)
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
     def test_resolve_config_path_prefers_environment(self) -> None:
         test_dir = TMP_DIR / "config-env-resolution"
         shutil.rmtree(test_dir, ignore_errors=True)

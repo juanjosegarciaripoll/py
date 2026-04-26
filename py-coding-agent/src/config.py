@@ -64,7 +64,7 @@ def load_config(path: Path | None) -> AppConfig:
         tool_allow_write,
         tool_allow_execute,
         tool_allowed_roots,
-    ) = _parse_tools(agent, defaults)
+    ) = _parse_permissions(agent, defaults)
     skills_root = _parse_skills(agent, defaults)
     return AppConfig(
         mode=mode,
@@ -109,36 +109,67 @@ def _parse_compaction(
     return (enabled, reserve_tokens, keep_recent_tokens, thinking_level)
 
 
-def _parse_tools(
+def _parse_permissions(
     agent: JsonObject,
     defaults: AppConfig,
 ) -> tuple[bool, bool, bool, tuple[str, ...]]:
-    tools = _as_str_object_dict(agent.get("tools"))
     tool_allow_read = defaults.tool_allow_read
     tool_allow_write = defaults.tool_allow_write
     tool_allow_execute = defaults.tool_allow_execute
     tool_allowed_roots = defaults.tool_allowed_roots
-    if tools is None:
+    tools = _as_str_object_dict(agent.get("tools"))
+    permissions = _as_str_object_dict(agent.get("permissions"))
+    (
+        tool_allow_read,
+        tool_allow_write,
+        tool_allow_execute,
+        tool_allowed_roots,
+    ) = _apply_permission_overrides(
+        tools,
+        tool_allow_read=tool_allow_read,
+        tool_allow_write=tool_allow_write,
+        tool_allow_execute=tool_allow_execute,
+        tool_allowed_roots=tool_allowed_roots,
+    )
+    return _apply_permission_overrides(
+        permissions,
+        tool_allow_read=tool_allow_read,
+        tool_allow_write=tool_allow_write,
+        tool_allow_execute=tool_allow_execute,
+        tool_allowed_roots=tool_allowed_roots,
+    )
+
+
+def _apply_permission_overrides(
+    section: JsonObject | None,
+    *,
+    tool_allow_read: bool,
+    tool_allow_write: bool,
+    tool_allow_execute: bool,
+    tool_allowed_roots: tuple[str, ...],
+) -> tuple[bool, bool, bool, tuple[str, ...]]:
+    if section is None:
         return (
             tool_allow_read,
             tool_allow_write,
             tool_allow_execute,
             tool_allowed_roots,
         )
-    tool_allow_read = _as_bool(tools.get("allow_read"), default=tool_allow_read)
-    tool_allow_write = _as_bool(tools.get("allow_write"), default=tool_allow_write)
-    tool_allow_execute = _as_bool(
-        tools.get("allow_execute"),
+    next_allow_read = _as_bool(section.get("allow_read"), default=tool_allow_read)
+    next_allow_write = _as_bool(section.get("allow_write"), default=tool_allow_write)
+    next_allow_execute = _as_bool(
+        section.get("allow_execute"),
         default=tool_allow_execute,
     )
-    parsed_roots = _as_tuple_of_str(tools.get("allowed_roots"))
-    if parsed_roots is not None:
-        tool_allowed_roots = parsed_roots
+    parsed_roots = _as_tuple_of_str(section.get("allowed_roots"))
+    next_allowed_roots = (
+        tool_allowed_roots if parsed_roots is None else parsed_roots
+    )
     return (
-        tool_allow_read,
-        tool_allow_write,
-        tool_allow_execute,
-        tool_allowed_roots,
+        next_allow_read,
+        next_allow_write,
+        next_allow_execute,
+        next_allowed_roots,
     )
 
 

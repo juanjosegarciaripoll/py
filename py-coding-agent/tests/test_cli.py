@@ -141,6 +141,29 @@ class CliTests(unittest.TestCase):
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 
+    def test_parse_args_loads_permissions_defaults(self) -> None:
+        test_dir = TMP_DIR / "cli-permissions-config"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        config_path = test_dir / "agent.toml"
+        config_path.write_text(
+            "[agent]\n"
+            "[agent.permissions]\n"
+            "allow_read=true\n"
+            "allow_write=false\n"
+            "allow_execute=false\n"
+            "allowed_roots=['py-coding-agent/tests']\n",
+            encoding="utf-8",
+        )
+        try:
+            config = parse_args(["--config", str(config_path), "--mode", "rpc"])
+            assert config.tool_allow_read is True
+            assert config.tool_allow_write is False
+            assert config.tool_allow_execute is False
+            assert config.tool_allowed_roots == ("py-coding-agent/tests",)
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
     def test_parse_args_rejects_invalid_mode(self) -> None:
         error: BaseException | None = None
         try:
