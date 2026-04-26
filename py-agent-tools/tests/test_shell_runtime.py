@@ -17,9 +17,13 @@ from py_agent_tools import (
 )
 
 
+def _event_list() -> list[ShellExecutionEvent]:
+    return []
+
+
 @dataclass(slots=True)
 class _CollectingSink:
-    events: list[ShellExecutionEvent] = field(default_factory=list)
+    events: list[ShellExecutionEvent] = field(default_factory=_event_list)
 
     def on_event(self, event: ShellExecutionEvent) -> None:
         self.events.append(event)
@@ -66,4 +70,3 @@ class ShellRuntimeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

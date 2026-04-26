@@ -60,11 +60,16 @@ class ShellCommandHandler(Protocol):
         ...
 
 
+def _handler_map() -> dict[str, ShellCommandHandler]:
+    """Create a typed handler map for dataclass defaults."""
+    return {}
+
+
 @dataclass(slots=True)
 class ShellCommandRegistry:
     """Name-to-handler registry for shell command execution."""
 
-    _handlers: dict[str, ShellCommandHandler] = field(default_factory=dict)
+    _handlers: dict[str, ShellCommandHandler] = field(default_factory=_handler_map)
 
     def register(
         self,
