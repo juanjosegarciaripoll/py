@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import sys
 import unittest
 from pathlib import Path
@@ -107,6 +108,20 @@ class ShellParserTests(unittest.TestCase):
         except ShellParseError:
             failed = True
         assert failed is True
+
+    def test_parse_expands_globs_when_cwd_provided(self) -> None:
+        test_dir = Path(__file__).resolve().parent / ".tmp" / "parser-glob"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            (test_dir / "a.txt").write_text("a", encoding="utf-8")
+            (test_dir / "b.txt").write_text("b", encoding="utf-8")
+            program = parse_shell_command("cat *.txt", glob_cwd=test_dir)
+            arguments = program.steps[0].pipeline.commands[0].arguments
+            assert any(value.endswith("a.txt") for value in arguments)
+            assert any(value.endswith("b.txt") for value in arguments)
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
 
     def test_parser_features_enforced_by_validation(self) -> None:
         parser = ShellSubsetParser(

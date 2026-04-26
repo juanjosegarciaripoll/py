@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import fnmatch
 import os
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from .shell_args import ShellArgParser, ShellArgsError
 from .shell_parser import ShellParseError, parse_shell_command
 from .shell_registry import (
     ShellCommandContext,
@@ -33,6 +35,7 @@ from .shell_subset import (
 
 type ToolName = Literal["read", "write", "edit", "bash", "find", "grep"]
 type PermissionName = Literal["read", "write", "execute"]
+MIN_COPY_MOVE_ARGS = 2
 
 
 class ToolError(Exception):
@@ -78,6 +81,12 @@ class ToolError(Exception):
     def invalid_bash_command(cls, details: str) -> ToolError:
         """Create invalid-bash-command error."""
         message = f"Invalid bash command: {details}"
+        return cls(message)
+
+    @classmethod
+    def invalid_shell_arguments(cls, details: str) -> ToolError:
+        """Create invalid-shell-arguments error."""
+        message = f"Invalid shell arguments: {details}"
         return cls(message)
 
 
@@ -229,7 +238,7 @@ class BuiltinToolExecutor:
     ) -> None:
         self._cwd = cwd.resolve()
         self._policy = policy or ToolSandboxPolicy.from_cwd(self._cwd)
-        self._shell_registry = shell_registry or _default_shell_registry()
+        self._shell_registry = shell_registry or self._build_default_shell_registry()
 
     def execute(self, tool_name: str, arguments: dict[str, object]) -> object:
         """Execute a tool by name."""
@@ -295,7 +304,7 @@ class BuiltinToolExecutor:
         """Execute shell-subset command in cwd without invoking full shell parsing."""
         self._policy.ensure_execute_allowed()
         try:
-            program = parse_shell_command(command)
+            program = parse_shell_command(command, glob_cwd=self._cwd)
         except (ShellParseError, ShellSubsetError) as exc:
             raise ToolError.invalid_bash_command(str(exc)) from exc
         cancellation = ShellCancellationToken.create()
@@ -347,11 +356,12 @@ class BuiltinToolExecutor:
                     )
         return results
 
-    def _resolve_user_path(self, path: str) -> Path:
+    def _resolve_user_path(self, path: str, *, cwd: Path | None = None) -> Path:
+        base_cwd = self._cwd if cwd is None else cwd
         candidate = Path(path)
         if candidate.is_absolute():
             return candidate.resolve()
-        return (self._cwd / candidate).resolve()
+        return (base_cwd / candidate).resolve()
 
     def _execute_shell_program(
         self,
@@ -362,6 +372,7 @@ class BuiltinToolExecutor:
         stdout_chunks: list[str] = []
         stderr_chunks: list[str] = []
         last_exit_code = 0
+        runtime_cwd = self._cwd
         for pipeline_index, step in enumerate(program.steps):
             if not _should_run_pipeline(step.condition, last_exit_code):
                 continue
@@ -369,16 +380,20 @@ class BuiltinToolExecutor:
                 step.pipeline,
                 pipeline_index=pipeline_index,
                 cancellation=cancellation,
+                cwd=runtime_cwd,
             )
             if result.stdout:
                 stdout_chunks.append(result.stdout)
             if result.stderr:
                 stderr_chunks.append(result.stderr)
             last_exit_code = result.exit_code
+            if result.next_cwd is not None:
+                runtime_cwd = result.next_cwd
         return ShellCommandResult(
             stdout="".join(stdout_chunks),
             stderr="".join(stderr_chunks),
             exit_code=last_exit_code,
+            next_cwd=runtime_cwd,
         )
 
     def _execute_pipeline(
@@ -387,10 +402,12 @@ class BuiltinToolExecutor:
         *,
         pipeline_index: int,
         cancellation: ShellCancellationToken,
+        cwd: Path,
     ) -> ShellCommandResult:
         pipeline_input = ""
         pipeline_stderr: list[str] = []
         last_result = ShellCommandResult()
+        runtime_cwd = cwd
         for command_index, command in enumerate(pipeline.commands):
             cancellation.ensure_active()
             command_text = _render_command_text(command)
@@ -407,14 +424,19 @@ class BuiltinToolExecutor:
                 command,
                 stdin=pipeline_input,
                 cancellation=cancellation,
-                pipeline_index=pipeline_index,
-                command_index=command_index,
+                metadata=_CommandExecutionMeta(
+                    pipeline_index=pipeline_index,
+                    command_index=command_index,
+                    cwd=runtime_cwd,
+                ),
             )
             if result.stderr:
                 pipeline_stderr.append(result.stderr)
             if result.exit_code != 0:
                 last_result = result
                 break
+            if result.next_cwd is not None:
+                runtime_cwd = result.next_cwd
             if command_index < len(pipeline.commands) - 1:
                 if pipeline.pipe_stderr:
                     pipeline_input = result.stdout + result.stderr
@@ -427,11 +449,13 @@ class BuiltinToolExecutor:
                 stdout="",
                 stderr=merged_stderr,
                 exit_code=last_result.exit_code,
+                next_cwd=runtime_cwd,
             )
         return ShellCommandResult(
             stdout=last_result.stdout,
             stderr=merged_stderr,
             exit_code=last_result.exit_code,
+            next_cwd=runtime_cwd,
         )
 
     def _execute_simple_command(
@@ -440,31 +464,31 @@ class BuiltinToolExecutor:
         *,
         stdin: str,
         cancellation: ShellCancellationToken,
-        pipeline_index: int,
-        command_index: int,
+        metadata: _CommandExecutionMeta,
     ) -> ShellCommandResult:
         command_input, output_redirects = self._prepare_redirections(
             command.redirections,
             stdin=stdin,
+            cwd=metadata.cwd,
         )
         result = self._run_command_handler(
             command,
             stdin=command_input,
             cancellation=cancellation,
+            cwd=metadata.cwd,
         )
         visible_result = self._apply_output_redirections(
             output_redirects,
-            stdout=result.stdout,
-            stderr=result.stderr,
-            exit_code=result.exit_code,
+            result=result,
+            cwd=metadata.cwd,
         )
         if visible_result.stdout:
             emit_shell_event(
                 None,
                 ShellExecutionEvent(
                     kind="stdout",
-                    pipeline_index=pipeline_index,
-                    command_index=command_index,
+                    pipeline_index=metadata.pipeline_index,
+                    command_index=metadata.command_index,
                     text=visible_result.stdout,
                 ),
             )
@@ -473,8 +497,8 @@ class BuiltinToolExecutor:
                 None,
                 ShellExecutionEvent(
                     kind="stderr",
-                    pipeline_index=pipeline_index,
-                    command_index=command_index,
+                    pipeline_index=metadata.pipeline_index,
+                    command_index=metadata.command_index,
                     text=visible_result.stderr,
                 ),
             )
@@ -482,8 +506,8 @@ class BuiltinToolExecutor:
             None,
             ShellExecutionEvent(
                 kind="command_end",
-                pipeline_index=pipeline_index,
-                command_index=command_index,
+                pipeline_index=metadata.pipeline_index,
+                command_index=metadata.command_index,
                 exit_code=visible_result.exit_code,
             ),
         )
@@ -494,11 +518,12 @@ class BuiltinToolExecutor:
         redirections: tuple[ShellRedirection, ...],
         *,
         stdin: str,
+        cwd: Path,
     ) -> tuple[str, tuple[ShellRedirection, ...]]:
         command_input = stdin
         output_redirects: list[ShellRedirection] = []
         for redirection in redirections:
-            target = self._resolve_user_path(redirection.target)
+            target = self._resolve_user_path(redirection.target, cwd=cwd)
             match redirection.operator:
                 case "<":
                     self._policy.ensure_read_allowed(target)
@@ -514,24 +539,24 @@ class BuiltinToolExecutor:
         self,
         redirections: tuple[ShellRedirection, ...],
         *,
-        stdout: str,
-        stderr: str,
-        exit_code: int,
+        result: ShellCommandResult,
+        cwd: Path,
     ) -> ShellCommandResult:
-        redirected_stdout = stdout
+        redirected_stdout = result.stdout
         for redirection in redirections:
-            target = self._resolve_user_path(redirection.target)
+            target = self._resolve_user_path(redirection.target, cwd=cwd)
             target.parent.mkdir(parents=True, exist_ok=True)
             if redirection.operator == ">>":
                 with target.open("a", encoding="utf-8") as handle:
-                    handle.write(stdout)
+                    handle.write(result.stdout)
             else:
-                target.write_text(stdout, encoding="utf-8")
+                target.write_text(result.stdout, encoding="utf-8")
             redirected_stdout = ""
         return ShellCommandResult(
             stdout=redirected_stdout,
-            stderr=stderr,
-            exit_code=exit_code,
+            stderr=result.stderr,
+            exit_code=result.exit_code,
+            next_cwd=result.next_cwd,
         )
 
     def _run_command_handler(
@@ -540,8 +565,9 @@ class BuiltinToolExecutor:
         *,
         stdin: str,
         cancellation: ShellCancellationToken,
+        cwd: Path,
     ) -> ShellCommandResult:
-        context = ShellCommandContext(cwd=self._cwd, stdin=stdin)
+        context = ShellCommandContext(cwd=cwd, stdin=stdin)
         try:
             handler = self._shell_registry.resolve(command.program)
         except ShellRegistryError:
@@ -579,6 +605,324 @@ class BuiltinToolExecutor:
             stderr=completed.stderr,
             exit_code=completed.returncode,
         )
+
+    def _build_default_shell_registry(self) -> ShellCommandRegistry:
+        registry = ShellCommandRegistry()
+        registry.register("echo", self._cmd_echo)
+        registry.register("pwd", self._cmd_pwd)
+        registry.register("cd", self._cmd_cd)
+        registry.register("ls", self._cmd_ls)
+        registry.register("dir", self._cmd_ls)
+        registry.register("cat", self._cmd_cat)
+        registry.register("head", self._cmd_head)
+        registry.register("tail", self._cmd_tail)
+        registry.register("mkdir", self._cmd_mkdir)
+        registry.register("cp", self._cmd_cp)
+        registry.register("mv", self._cmd_mv)
+        registry.register("grep", self._cmd_grep)
+        return registry
+
+    def _cmd_echo(
+        self,
+        *,
+        context: ShellCommandContext,
+        arguments: tuple[str, ...],
+        cancellation: ShellCancellationToken,
+        event_sink: object | None,
+    ) -> ShellCommandResult:
+        _ = context
+        _ = event_sink
+        cancellation.ensure_active()
+        output = f"{' '.join(arguments)}\n" if arguments else "\n"
+        return ShellCommandResult(stdout=output, stderr="", exit_code=0)
+
+    def _cmd_pwd(
+        self,
+        *,
+        context: ShellCommandContext,
+        arguments: tuple[str, ...],
+        cancellation: ShellCancellationToken,
+        event_sink: object | None,
+    ) -> ShellCommandResult:
+        _ = event_sink
+        cancellation.ensure_active()
+        if arguments:
+            return _command_usage_error("pwd does not accept positional arguments.")
+        return ShellCommandResult(stdout=f"{context.cwd}\n")
+
+    def _cmd_cd(
+        self,
+        *,
+        context: ShellCommandContext,
+        arguments: tuple[str, ...],
+        cancellation: ShellCancellationToken,
+        event_sink: object | None,
+    ) -> ShellCommandResult:
+        _ = event_sink
+        cancellation.ensure_active()
+        if len(arguments) > 1:
+            return _command_usage_error("cd accepts at most one path.")
+        target = (
+            context.cwd
+            if not arguments
+            else self._resolve_user_path(arguments[0], cwd=context.cwd)
+        )
+        self._policy.ensure_read_allowed(target)
+        if not target.is_dir():
+            return _command_usage_error(f"cd target is not a directory: {target}")
+        return ShellCommandResult(next_cwd=target.resolve())
+
+    def _cmd_ls(
+        self,
+        *,
+        context: ShellCommandContext,
+        arguments: tuple[str, ...],
+        cancellation: ShellCancellationToken,
+        event_sink: object | None,
+    ) -> ShellCommandResult:
+        _ = event_sink
+        cancellation.ensure_active()
+        try:
+            parsed = ShellArgParser(
+                allowed_flags=frozenset({"-a", "--all"})
+            ).parse(arguments)
+        except ShellArgsError as exc:
+            raise ToolError.invalid_shell_arguments(str(exc)) from exc
+        include_hidden = parsed.has_flag("-a") or parsed.has_flag("--all")
+        targets = parsed.positionals or (".",)
+        lines: list[str] = []
+        for raw_target in targets:
+            target = self._resolve_user_path(raw_target, cwd=context.cwd)
+            self._policy.ensure_read_allowed(target)
+            if not target.exists():
+                return _command_usage_error(f"Path does not exist: {target}")
+            if target.is_file():
+                lines.append(target.name)
+                continue
+            entries = sorted(target.iterdir(), key=lambda item: item.name.lower())
+            for entry in entries:
+                if not include_hidden and entry.name.startswith("."):
+                    continue
+                label = f"{entry.name}/" if entry.is_dir() else entry.name
+                lines.append(label)
+        output = "\n".join(lines)
+        if output:
+            output += "\n"
+        return ShellCommandResult(stdout=output)
+
+    def _cmd_cat(
+        self,
+        *,
+        context: ShellCommandContext,
+        arguments: tuple[str, ...],
+        cancellation: ShellCancellationToken,
+        event_sink: object | None,
+    ) -> ShellCommandResult:
+        _ = event_sink
+        cancellation.ensure_active()
+        if not arguments:
+            return ShellCommandResult(stdout=context.stdin)
+        chunks: list[str] = []
+        for raw_path in arguments:
+            target = self._resolve_user_path(raw_path, cwd=context.cwd)
+            self._policy.ensure_read_allowed(target)
+            if not target.is_file():
+                return _command_usage_error(f"cat target is not a file: {target}")
+            chunks.append(target.read_text(encoding="utf-8"))
+        return ShellCommandResult(stdout="".join(chunks))
+
+    def _cmd_head(
+        self,
+        *,
+        context: ShellCommandContext,
+        arguments: tuple[str, ...],
+        cancellation: ShellCancellationToken,
+        event_sink: object | None,
+    ) -> ShellCommandResult:
+        _ = event_sink
+        cancellation.ensure_active()
+        parsed = _parse_line_count_args(arguments)
+        text = self._load_text_for_stream_command(
+            context=context,
+            files=parsed.positionals,
+        )
+        lines = text.splitlines()
+        output = "\n".join(lines[: parsed.count])
+        if output:
+            output += "\n"
+        return ShellCommandResult(stdout=output)
+
+    def _cmd_tail(
+        self,
+        *,
+        context: ShellCommandContext,
+        arguments: tuple[str, ...],
+        cancellation: ShellCancellationToken,
+        event_sink: object | None,
+    ) -> ShellCommandResult:
+        _ = event_sink
+        cancellation.ensure_active()
+        parsed = _parse_line_count_args(arguments)
+        text = self._load_text_for_stream_command(
+            context=context,
+            files=parsed.positionals,
+        )
+        lines = text.splitlines()
+        output = "\n".join(lines[-parsed.count :])
+        if output:
+            output += "\n"
+        return ShellCommandResult(stdout=output)
+
+    def _cmd_mkdir(
+        self,
+        *,
+        context: ShellCommandContext,
+        arguments: tuple[str, ...],
+        cancellation: ShellCancellationToken,
+        event_sink: object | None,
+    ) -> ShellCommandResult:
+        _ = event_sink
+        cancellation.ensure_active()
+        try:
+            parsed = ShellArgParser(allowed_flags=frozenset({"-p"})).parse(arguments)
+        except ShellArgsError as exc:
+            raise ToolError.invalid_shell_arguments(str(exc)) from exc
+        if not parsed.positionals:
+            return _command_usage_error("mkdir requires at least one path.")
+        allow_parents = parsed.has_flag("-p")
+        for raw_path in parsed.positionals:
+            target = self._resolve_user_path(raw_path, cwd=context.cwd)
+            self._policy.ensure_write_allowed(target)
+            target.mkdir(parents=allow_parents, exist_ok=allow_parents)
+        return ShellCommandResult()
+
+    def _cmd_cp(
+        self,
+        *,
+        context: ShellCommandContext,
+        arguments: tuple[str, ...],
+        cancellation: ShellCancellationToken,
+        event_sink: object | None,
+    ) -> ShellCommandResult:
+        _ = event_sink
+        cancellation.ensure_active()
+        if len(arguments) < MIN_COPY_MOVE_ARGS:
+            return _command_usage_error("cp requires source and destination.")
+        source_values = arguments[:-1]
+        destination = self._resolve_user_path(arguments[-1], cwd=context.cwd)
+        sources = tuple(
+            self._resolve_user_path(value, cwd=context.cwd)
+            for value in source_values
+        )
+        for source in sources:
+            self._policy.ensure_read_allowed(source)
+            if not source.exists():
+                return _command_usage_error(f"cp source does not exist: {source}")
+        if len(sources) > 1:
+            self._policy.ensure_write_allowed(destination)
+            if not destination.is_dir():
+                message = "cp destination must be a directory for multiple sources."
+                return _command_usage_error(message)
+            for source in sources:
+                target = destination / source.name
+                self._policy.ensure_write_allowed(target)
+                _copy_path(source, target)
+            return ShellCommandResult()
+        source = next(iter(sources))
+        self._policy.ensure_write_allowed(destination)
+        _copy_path(source, destination)
+        return ShellCommandResult()
+
+    def _cmd_mv(
+        self,
+        *,
+        context: ShellCommandContext,
+        arguments: tuple[str, ...],
+        cancellation: ShellCancellationToken,
+        event_sink: object | None,
+    ) -> ShellCommandResult:
+        _ = event_sink
+        cancellation.ensure_active()
+        if len(arguments) < MIN_COPY_MOVE_ARGS:
+            return _command_usage_error("mv requires source and destination.")
+        source_values = arguments[:-1]
+        destination = self._resolve_user_path(arguments[-1], cwd=context.cwd)
+        sources = tuple(
+            self._resolve_user_path(value, cwd=context.cwd)
+            for value in source_values
+        )
+        for source in sources:
+            self._policy.ensure_read_allowed(source)
+            if not source.exists():
+                return _command_usage_error(f"mv source does not exist: {source}")
+        if len(sources) > 1:
+            self._policy.ensure_write_allowed(destination)
+            if not destination.is_dir():
+                message = "mv destination must be a directory for multiple sources."
+                return _command_usage_error(message)
+            for source in sources:
+                target = destination / source.name
+                self._policy.ensure_write_allowed(target)
+                shutil.move(str(source), str(target))
+            return ShellCommandResult()
+        source = next(iter(sources))
+        self._policy.ensure_write_allowed(destination)
+        shutil.move(str(source), str(destination))
+        return ShellCommandResult()
+
+    def _cmd_grep(
+        self,
+        *,
+        context: ShellCommandContext,
+        arguments: tuple[str, ...],
+        cancellation: ShellCancellationToken,
+        event_sink: object | None,
+    ) -> ShellCommandResult:
+        _ = event_sink
+        cancellation.ensure_active()
+        if not arguments:
+            return _command_usage_error("grep requires a search pattern.")
+        pattern = arguments[0]
+        files = arguments[1:]
+        if not files:
+            output = "\n".join(
+                line for line in context.stdin.splitlines() if pattern in line
+            )
+            if output:
+                output += "\n"
+            return ShellCommandResult(stdout=output)
+        matches: list[str] = []
+        for raw_path in files:
+            target = self._resolve_user_path(raw_path, cwd=context.cwd)
+            self._policy.ensure_read_allowed(target)
+            if not target.is_file():
+                return _command_usage_error(f"grep target is not a file: {target}")
+            text = target.read_text(encoding="utf-8")
+            for index, line in enumerate(text.splitlines(), start=1):
+                if pattern in line:
+                    matches.append(f"{target}:{index}:{line}")
+        output = "\n".join(matches)
+        if output:
+            output += "\n"
+        return ShellCommandResult(stdout=output)
+
+    def _load_text_for_stream_command(
+        self,
+        *,
+        context: ShellCommandContext,
+        files: tuple[str, ...],
+    ) -> str:
+        if not files:
+            return context.stdin
+        chunks: list[str] = []
+        for raw_path in files:
+            target = self._resolve_user_path(raw_path, cwd=context.cwd)
+            self._policy.ensure_read_allowed(target)
+            if not target.is_file():
+                message = f"Expected file path, got: {target}"
+                raise ToolError.invalid_shell_arguments(message)
+            chunks.append(target.read_text(encoding="utf-8"))
+        return "".join(chunks)
 
     @staticmethod
     def _is_text_file(path: Path) -> bool:
@@ -618,26 +962,6 @@ def _normalize_tool_name(value: str) -> ToolName:
             raise ToolError.unknown_tool(value)
 
 
-def _default_shell_registry() -> ShellCommandRegistry:
-    registry = ShellCommandRegistry()
-    registry.register("echo", _echo_command_handler)
-    return registry
-
-
-def _echo_command_handler(
-    *,
-    context: ShellCommandContext,
-    arguments: tuple[str, ...],
-    cancellation: ShellCancellationToken,
-    event_sink: object | None,
-) -> ShellCommandResult:
-    _ = context
-    _ = event_sink
-    cancellation.ensure_active()
-    output = f"{' '.join(arguments)}\n" if arguments else "\n"
-    return ShellCommandResult(stdout=output, stderr="", exit_code=0)
-
-
 def _merge_command_environment(
     assignments: tuple[ShellEnvAssignment, ...],
 ) -> dict[str, str]:
@@ -660,6 +984,55 @@ def _should_run_pipeline(condition: PipelineCondition, last_exit_code: int) -> b
             return last_exit_code == 0
         case "on_failure":
             return last_exit_code != 0
+
+
+def _command_usage_error(message: str) -> ShellCommandResult:
+    return ShellCommandResult(stdout="", stderr=f"{message}\n", exit_code=2)
+
+
+@dataclass(slots=True, frozen=True)
+class _LineCountArgs:
+    count: int
+    positionals: tuple[str, ...]
+
+
+@dataclass(slots=True, frozen=True)
+class _CommandExecutionMeta:
+    pipeline_index: int
+    command_index: int
+    cwd: Path
+
+
+def _parse_line_count_args(arguments: tuple[str, ...]) -> _LineCountArgs:
+    try:
+        parsed = ShellArgParser(
+            value_options=frozenset({"-n", "--lines"}),
+        ).parse(arguments)
+    except ShellArgsError as exc:
+        raise ToolError.invalid_shell_arguments(str(exc)) from exc
+    raw_count = parsed.get_value("-n", parsed.get_value("--lines", "10"))
+    assert raw_count is not None
+    try:
+        count = int(raw_count)
+    except ValueError as exc:
+        message = f"Invalid integer for line count: {raw_count}"
+        raise ToolError.invalid_shell_arguments(message) from exc
+    if count < 0:
+        message = "Line count cannot be negative."
+        raise ToolError.invalid_shell_arguments(message)
+    return _LineCountArgs(count=count, positionals=parsed.positionals)
+
+
+def _copy_path(source: Path, destination: Path) -> None:
+    if source.is_dir():
+        shutil.copytree(source, destination, dirs_exist_ok=True)
+        return
+    if destination.is_dir():
+        target = destination / source.name
+        shutil.copy2(source, target)
+        return
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
 
 
 def _is_within_root(path: Path, root: Path) -> bool:

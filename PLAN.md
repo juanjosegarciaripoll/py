@@ -140,19 +140,19 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
    - [x] Add runtime cancellation/signal propagation model for execution events.
    - [x] Design extensibility hooks for adding new syntax elements/handlers safely.
    - [x] Integrate parser/registry/runtime path into `bash` execution with safe command parsing and redirection policy enforcement.
-   - [ ] Implement command argument parsing infrastructure reusable across built-in shell commands.
-   - [ ] Implement parser-level glob expansion and pass expanded argv to command handlers.
-   - [ ] Implement built-in `grep` command handler.
-   - [ ] Implement built-in `ls` command handler.
-   - [ ] Implement built-in `dir` command handler.
-   - [ ] Implement built-in `cd` command handler.
-   - [ ] Implement built-in `pwd` command handler.
-   - [ ] Implement built-in `cp` command handler.
-   - [ ] Implement built-in `mv` command handler.
-   - [ ] Implement built-in `cat` command handler.
-   - [ ] Implement built-in `head` command handler.
-   - [ ] Implement built-in `tail` command handler.
-   - [ ] Implement built-in `mkdir` command handler.
+   - [x] Implement command argument parsing infrastructure reusable across built-in shell commands.
+   - [x] Implement parser-level glob expansion and pass expanded argv to command handlers.
+   - [x] Implement built-in `grep` command handler.
+   - [x] Implement built-in `ls` command handler.
+   - [x] Implement built-in `dir` command handler.
+   - [x] Implement built-in `cd` command handler.
+   - [x] Implement built-in `pwd` command handler.
+   - [x] Implement built-in `cp` command handler.
+   - [x] Implement built-in `mv` command handler.
+   - [x] Implement built-in `cat` command handler.
+   - [x] Implement built-in `head` command handler.
+   - [x] Implement built-in `tail` command handler.
+   - [x] Implement built-in `mkdir` command handler.
    - [ ] Add execution safety limits (timeouts/output size/pipeline bounds enforcement at runtime) and finalize strict behavior docs.
    Completed progress:
    - Added `shell_subset` AST models and structural validation helpers in `py-agent-tools`.
@@ -160,6 +160,9 @@ Recreate the Pi agentic framework in Python using standard libraries and minimal
    - Added conditional parsing/execution for `&&` and `||` with short-circuit behavior.
    - Added shell runtime primitives for cancellation tokens and structured execution event emission.
    - Added extensible shell command registry primitives for modular command-handler registration.
+   - Added shared shell argument parsing utilities for reusable command option/value handling.
+   - Added parser-level glob expansion (`*`, `?`, `[]`) before handler execution.
+   - Added built-in shell commands: `grep`, `ls`, `dir`, `cd`, `pwd`, `cp`, `mv`, `cat`, `head`, `tail`, `mkdir`.
    - Replaced full-shell invocation in `bash` with parsed subset execution (including `;`, `&&`, `||`, pipeline handling, and policy-aware redirection checks).
 3. Integrate permissions into read, write, and bash tools.
    Status: Completed.

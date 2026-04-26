@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from py_agent_tools import (
     BuiltinToolExecutor,
+    ToolError,
     ToolPermissionError,
     ToolPermissionPolicy,
     ToolSandboxPolicy,
@@ -18,6 +19,7 @@ from py_agent_tools import (
 
 TMP_DIR = Path(__file__).resolve().parent / ".tmp"
 ALPHA_MATCH_COUNT = 2
+COMMAND_USAGE_EXIT_CODE = 2
 
 
 class ToolTests(unittest.TestCase):
@@ -289,6 +291,153 @@ class ToolTests(unittest.TestCase):
             assert result.exit_code == 0
             assert "alpha" in result.stdout
             assert "beta" in result.stdout
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_bash_pwd_and_cd(self) -> None:
+        test_dir = TMP_DIR / "tools-bash-cd-pwd"
+        nested = test_dir / "nested"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        nested.mkdir(parents=True, exist_ok=True)
+        try:
+            tools = BuiltinToolExecutor(cwd=test_dir)
+            result = tools.bash("cd nested && pwd")
+            assert result.exit_code == 0
+            assert str(nested.resolve()) in result.stdout
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_bash_mkdir_ls_and_dir(self) -> None:
+        test_dir = TMP_DIR / "tools-bash-ls-dir"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            tools = BuiltinToolExecutor(cwd=test_dir)
+            create_result = tools.bash("mkdir alpha")
+            assert create_result.exit_code == 0
+            ls_result = tools.bash("ls")
+            assert "alpha/" in ls_result.stdout
+            dir_result = tools.bash("dir")
+            assert "alpha/" in dir_result.stdout
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_bash_cat_head_tail_and_globbing(self) -> None:
+        test_dir = TMP_DIR / "tools-bash-streams"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            tools = BuiltinToolExecutor(cwd=test_dir)
+            tools.write("a.txt", "a1\na2\na3\n")
+            tools.write("b.txt", "b1\nb2\nb3\n")
+            cat_result = tools.bash("cat *.txt")
+            assert "a1" in cat_result.stdout
+            assert "b1" in cat_result.stdout
+
+            head_result = tools.bash("head -n 2 a.txt")
+            assert head_result.stdout == "a1\na2\n"
+            tail_result = tools.bash("tail --lines=2 b.txt")
+            assert tail_result.stdout == "b2\nb3\n"
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_bash_cp_mv(self) -> None:
+        test_dir = TMP_DIR / "tools-bash-cp-mv"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            tools = BuiltinToolExecutor(cwd=test_dir)
+            tools.write("origin.txt", "payload")
+            cp_result = tools.bash("cp origin.txt copy.txt")
+            assert cp_result.exit_code == 0
+            assert tools.read("copy.txt") == "payload"
+
+            mv_result = tools.bash("mv copy.txt moved.txt")
+            assert mv_result.exit_code == 0
+            assert tools.read("moved.txt") == "payload"
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_bash_grep_builtin(self) -> None:
+        test_dir = TMP_DIR / "tools-bash-grep"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            tools = BuiltinToolExecutor(cwd=test_dir)
+            tools.write("search.txt", "alpha\nbeta\nalpha-two\n")
+            result = tools.bash("grep alpha search.txt")
+            assert result.exit_code == 0
+            assert "alpha" in result.stdout
+            assert "search.txt:1:alpha" in result.stdout
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_bash_grep_from_pipeline_stdin(self) -> None:
+        test_dir = TMP_DIR / "tools-bash-grep-stdin"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            tools = BuiltinToolExecutor(cwd=test_dir)
+            result = tools.bash("echo alpha | grep alpha")
+            assert result.exit_code == 0
+            assert "alpha" in result.stdout
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_bash_mkdir_parents_and_hidden_ls(self) -> None:
+        test_dir = TMP_DIR / "tools-bash-hidden-ls"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            tools = BuiltinToolExecutor(cwd=test_dir)
+            result = tools.bash("mkdir -p .hidden/deep")
+            assert result.exit_code == 0
+            ls_default = tools.bash("ls")
+            assert ".hidden/" not in ls_default.stdout
+            ls_all = tools.bash("ls -a")
+            assert ".hidden/" in ls_all.stdout
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_bash_cp_and_mv_multiple_sources(self) -> None:
+        test_dir = TMP_DIR / "tools-bash-multi-copy-move"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            tools = BuiltinToolExecutor(cwd=test_dir)
+            tools.write("a.txt", "A")
+            tools.write("b.txt", "B")
+            tools.bash("mkdir target")
+            cp_result = tools.bash("cp a.txt b.txt target")
+            assert cp_result.exit_code == 0
+            assert tools.read("target/a.txt") == "A"
+            assert tools.read("target/b.txt") == "B"
+
+            tools.bash("mkdir moved")
+            mv_result = tools.bash("mv target/a.txt target/b.txt moved")
+            assert mv_result.exit_code == 0
+            assert tools.read("moved/a.txt") == "A"
+            assert tools.read("moved/b.txt") == "B"
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_bash_cd_invalid_target_and_head_invalid_count(self) -> None:
+        test_dir = TMP_DIR / "tools-bash-invalids"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            tools = BuiltinToolExecutor(cwd=test_dir)
+            tools.write("file.txt", "x")
+            cd_result = tools.bash("cd file.txt")
+            assert cd_result.exit_code == COMMAND_USAGE_EXIT_CODE
+            assert "not a directory" in cd_result.stderr
+
+            failed = False
+            try:
+                tools.bash("head -n nope file.txt")
+            except ToolError:
+                failed = True
+            assert failed is True
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 

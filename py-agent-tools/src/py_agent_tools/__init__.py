@@ -9,6 +9,7 @@ from .builtin import (
     ToolPermissionPolicy,
     ToolSandboxPolicy,
 )
+from .shell_args import ParsedShellArgs, ShellArgParser, ShellArgsError
 from .shell_parser import (
     ShellParseError,
     ShellSubsetParser,
@@ -49,7 +50,10 @@ __all__ = [
     "BashResult",
     "BuiltinToolExecutor",
     "GrepMatch",
+    "ParsedShellArgs",
     "PipelineCondition",
+    "ShellArgParser",
+    "ShellArgsError",
     "ShellCancellationToken",
     "ShellCommandContext",
     "ShellCommandHandler",
@@ -81,3 +85,4 @@ __all__ = [
     "parse_shell_command",
     "validate_shell_program",
 ]
+

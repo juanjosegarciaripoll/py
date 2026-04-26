@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shlex
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
 
 from .shell_subset import (
@@ -178,10 +179,14 @@ def parse_shell_command(
     command: str,
     *,
     parser: ShellSubsetParser | None = None,
+    glob_cwd: Path | None = None,
 ) -> ShellProgram:
     """Convenience function for parsing shell text into AST."""
     active_parser = parser or ShellSubsetParser()
-    return active_parser.parse(command)
+    program = active_parser.parse(command)
+    if glob_cwd is None:
+        return program
+    return _expand_program_globs(program, cwd=glob_cwd)
 
 
 def _parse_pipeline(cursor: _TokenCursor) -> ShellPipeline:
@@ -272,3 +277,60 @@ def _parse_env_assignment(token: str) -> ShellEnvAssignment | None:
         return ShellEnvAssignment(name=name, value=value)
     except ShellSubsetError:
         return None
+
+
+def _expand_program_globs(program: ShellProgram, *, cwd: Path) -> ShellProgram:
+    steps: list[ShellPipelineStep] = []
+    for step in program.steps:
+        commands: list[ShellSimpleCommand] = []
+        for command in step.pipeline.commands:
+            expanded_args = _expand_argument_globs(command.arguments, cwd=cwd)
+            commands.append(
+                ShellSimpleCommand(
+                    program=command.program,
+                    arguments=expanded_args,
+                    env_assignments=command.env_assignments,
+                    redirections=command.redirections,
+                )
+            )
+        steps.append(
+            ShellPipelineStep(
+                pipeline=ShellPipeline(
+                    commands=tuple(commands),
+                    pipe_stderr=step.pipeline.pipe_stderr,
+                ),
+                condition=step.condition,
+            )
+        )
+    return ShellProgram(steps=tuple(steps))
+
+
+def _expand_argument_globs(arguments: tuple[str, ...], *, cwd: Path) -> tuple[str, ...]:
+    expanded: list[str] = []
+    for argument in arguments:
+        if not _contains_glob(argument):
+            expanded.append(argument)
+            continue
+        matches = _glob_argument(argument, cwd=cwd)
+        if matches:
+            expanded.extend(matches)
+        else:
+            expanded.append(argument)
+    return tuple(expanded)
+
+
+def _contains_glob(argument: str) -> bool:
+    return "*" in argument or "?" in argument or "[" in argument
+
+
+def _glob_argument(argument: str, *, cwd: Path) -> list[str]:
+    pattern = Path(argument)
+    if pattern.is_absolute():
+        anchor = Path(pattern.anchor)
+        anchor_text = anchor.as_posix()
+        pattern_text = pattern.as_posix()
+        relative_pattern = pattern_text.removeprefix(anchor_text).lstrip("/")
+        matches = sorted(anchor.glob(relative_pattern))
+        return [str(match) for match in matches]
+    matches = sorted(cwd.glob(argument))
+    return [str(match) for match in matches]

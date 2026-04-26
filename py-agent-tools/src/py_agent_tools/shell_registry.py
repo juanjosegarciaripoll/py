@@ -42,6 +42,7 @@ class ShellCommandResult:
     stdout: str = ""
     stderr: str = ""
     exit_code: int = 0
+    next_cwd: Path | None = None
 
 
 class ShellCommandHandler(Protocol):
