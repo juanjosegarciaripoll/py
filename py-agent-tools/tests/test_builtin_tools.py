@@ -10,6 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from py_agent_tools import (
+    BashExecutionLimits,
     BuiltinToolExecutor,
     ToolError,
     ToolPermissionError,
@@ -20,6 +21,8 @@ from py_agent_tools import (
 TMP_DIR = Path(__file__).resolve().parent / ".tmp"
 ALPHA_MATCH_COUNT = 2
 COMMAND_USAGE_EXIT_CODE = 2
+SHELL_TIMEOUT_EXIT_CODE = 124
+SHELL_LIMIT_EXIT_CODE = 125
 
 
 class ToolTests(unittest.TestCase):
@@ -480,6 +483,62 @@ class ToolTests(unittest.TestCase):
         assert permissions.is_allowed("read") is True
         assert permissions.is_allowed("write") is False
         assert permissions.is_allowed("execute") is True
+
+    def test_bash_enforces_output_size_limit(self) -> None:
+        test_dir = TMP_DIR / "tools-bash-output-limit"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            limits = BashExecutionLimits(max_output_bytes=4)
+            tools = BuiltinToolExecutor(cwd=test_dir, bash_limits=limits)
+            result = tools.bash("echo alpha")
+            assert result.exit_code == SHELL_LIMIT_EXIT_CODE
+            assert result.stdout == ""
+            assert "output exceeded limit" in result.stderr.lower()
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_bash_enforces_pipeline_count_limit(self) -> None:
+        test_dir = TMP_DIR / "tools-bash-pipeline-limit"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            limits = BashExecutionLimits(max_pipelines=1)
+            tools = BuiltinToolExecutor(cwd=test_dir, bash_limits=limits)
+            result = tools.bash("echo alpha ; echo beta")
+            assert result.exit_code == SHELL_LIMIT_EXIT_CODE
+            assert "alpha" in result.stdout
+            assert "pipeline limit exceeded" in result.stderr.lower()
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_bash_enforces_command_count_limit(self) -> None:
+        test_dir = TMP_DIR / "tools-bash-command-limit"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            limits = BashExecutionLimits(max_commands=1)
+            tools = BuiltinToolExecutor(cwd=test_dir, bash_limits=limits)
+            result = tools.bash("echo alpha | cat")
+            assert result.exit_code == SHELL_LIMIT_EXIT_CODE
+            assert "command limit exceeded" in result.stderr.lower()
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
+
+    def test_bash_enforces_runtime_timeout_for_external_command(self) -> None:
+        test_dir = TMP_DIR / "tools-bash-timeout-limit"
+        shutil.rmtree(test_dir, ignore_errors=True)
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            limits = BashExecutionLimits(max_execution_seconds=0.01)
+            tools = BuiltinToolExecutor(cwd=test_dir, bash_limits=limits)
+            result = tools.bash(
+                "python -c \"import time; time.sleep(0.2); print('done')\""
+            )
+            assert result.exit_code == SHELL_TIMEOUT_EXIT_CODE
+            assert "timed out" in result.stderr.lower()
+        finally:
+            shutil.rmtree(test_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

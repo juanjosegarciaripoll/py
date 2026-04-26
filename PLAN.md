@@ -2,215 +2,137 @@
 
 Recreate the Pi agentic framework in Python using standard libraries and minimal dependencies, focusing on llm-providers, py-agent, and py-coding-agent components with flexible sandboxing.
 
-**Steps**
+## Status Summary (2026-04-26)
+
+- Completed phases: 2 (llm-providers), 3 (py-agent), 4 (py-coding-agent)
+- In-progress phase: 5 (sandboxing)
+- Pending phase: 6 (integration/installation)
+- Active next task: Phase 5.2 runtime safety limits for safe bash + strict behavior docs
+
+## Tasks
 
 ### Phase 1: Project Setup and Structure
 
-**Status:** In progress
+**Status:** Completed
 
-1. Set up workspace structure with uv workspaces for llm-providers, py-agent, py-coding-agent subprojects.
-2. Update pyproject.toml with workspace configuration and basic metadata.
-3. Create initial directory structure and stub pyproject.toml files for each component.
-4. Set up linting and type checking tools (ruff, basedpyright, mypy) in root pyproject.toml.
+- [x] Set up workspace structure with uv workspaces for llm-providers, py-agent, py-coding-agent subprojects.
+- [x] Update `pyproject.toml` with workspace configuration and basic metadata.
+- [x] Create initial directory structure and stub `pyproject.toml` files for each component.
+- [x] Set up linting and type checking tools (ruff, basedpyright, mypy) in root `pyproject.toml`.
 
-### Phase 2: LLM Providers (llm-providers)
+### Phase 2: LLM Providers (`llm-providers`)
 
 **Status:** Completed
 
-1. Port core API registry and provider interfaces from pi-mono/packages/ai.
-2. Implement Anthropic provider with streaming support.
-3. Implement OpenAI provider with streaming support.
-4. Add OpenAI-compatible provider for local models.
-5. Implement OAuth handling and API key management.
-6. Add model registry and generated model definitions.
-7. Implement an optional TUI interface to select providers.
-8. Configuration serializable as Python dicts and JSON.
-9. Define and implement unified communication message schema parity:
-   assistant/user/tool-result message blocks, tool-call identifiers, timestamps, and error payloads.
-10. Implement full streaming event lifecycle parity:
-    start/delta/end events for text, thinking, and tool calls, plus done/error terminal events.
-11. Implement tool-call communication behavior parity:
-    partial JSON argument streaming, end-of-tool-call normalization, and tool-call ID consistency.
-12. Implement tool-result communication parity:
-    text and image tool-result content routing, provider-specific conversion rules, and compatibility handling.
-13. Implement reasoning/thinking communication parity:
-    unified reasoning interface and provider-specific reasoning/thinking options and replay behavior.
-14. Implement stop-reason and interruption parity:
-    stop/length/tool-use/error/aborted handling and continuation-after-abort semantics.
-15. Implement cross-provider handoff communication parity:
-    transformation of assistant messages (including thinking blocks) between provider formats.
-16. Implement context serialization and replay parity:
-    stable JSON serialization/deserialization of full communication context.
-17. Implement communication robustness parity:
-    partial JSON cleanup, unicode sanitization, overflow detection, and malformed stream recovery.
-18. Implement communication telemetry parity:
-    token usage and response identifiers across providers, with extensible cost accounting hooks.
-19. Implement provider-level model accessibility checks used by interactive configuration flows.
-20. Create comprehensive unit tests for communication semantics and edge cases.
+- [x] Port core API registry and provider interfaces from `pi-mono/packages/ai`.
+- [x] Implement Anthropic provider with streaming support.
+- [x] Implement OpenAI provider with streaming support.
+- [x] Add OpenAI-compatible provider for local models.
+- [x] Implement OAuth handling and API key management.
+- [x] Add model registry and generated model definitions.
+- [x] Implement optional TUI interface to select providers.
+- [x] Make configuration serializable as Python dicts and JSON.
+- [x] Implement unified communication schema parity (messages/tool-calls/timestamps/errors).
+- [x] Implement full streaming lifecycle parity (start/delta/end + done/error).
+- [x] Implement tool-call communication parity (partial JSON, normalization, stable IDs).
+- [x] Implement tool-result parity (text/image routing and compatibility).
+- [x] Implement reasoning/thinking parity.
+- [x] Implement stop-reason/interruption parity.
+- [x] Implement cross-provider handoff parity.
+- [x] Implement context serialization/replay parity.
+- [x] Implement robustness parity (partial JSON cleanup, unicode sanitization, overflow/malformed recovery).
+- [x] Implement telemetry parity (usage IDs + extensible cost hooks).
+- [x] Implement provider model accessibility checks for interactive config.
+- [x] Add comprehensive unit tests for communication semantics and edge cases.
 
-### Phase 3: Agent Framework (py-agent)
+### Phase 3: Agent Framework (`py-agent`)
 
 **Status:** Completed
 
-1. Mirror `pi-mono/packages/agent/src/types.ts` contracts in Python:
-   `AgentMessage` abstraction, agent context/state, tool/result types, event union, queue modes, tool execution modes, and hook context/result types.
-2. Implement low-level loop parity with `agent-loop.ts`:
-   `agent_loop()` and `agent_loop_continue()` behavior, `convert_to_llm` boundary, optional `transform_context`, dynamic API key resolver, and strict continue preconditions.
-3. Implement agent event lifecycle parity:
-   `agent_start/end`, `turn_start/end`, `message_start/update/end`, `tool_execution_start/update/end`, including ordering guarantees and terminal error/aborted handling.
-4. Implement tool execution parity:
-   sequential and parallel modes, per-tool mode override, preflight argument preparation/validation, `before_tool_call` blocking, `after_tool_call` override semantics, streaming tool updates, and batch `terminate` behavior.
-5. Implement steering/follow-up parity:
-   one-at-a-time vs all queue modes, queue drain/clear behavior, and turn-loop injection semantics matching `runLoop`.
-6. Implement high-level `Agent` class parity with `agent.ts`:
-   stateful wrapper, prompt normalization (text/image/message), `continue()`, abort/wait/reset, subscription semantics (await listeners in order), runtime streaming state, and queue APIs.
-7. Implement proxy transport parity with `proxy.ts`:
-   proxy stream function, proxy event decoding/reconstruction, partial tool-call JSON handling, and done/error finalization into assistant messages.
-8. Implement unit test parity against `packages/agent/test` behavior:
-   event order, continue edge cases, queue semantics, tool execution ordering in parallel/sequential, hook behavior, termination rules, and proxy stream parsing.
-9. Raise py-agent test coverage toward the project target and document any justified exclusions if 100% line coverage is not practical. Completed at 96% line coverage.
+- [x] Mirror `types.ts` contracts in Python (`AgentMessage`, context/state, tool/result, events, queue/tool modes, hooks).
+- [x] Implement low-level loop parity with `agent-loop.ts` (`agent_loop`, `agent_loop_continue`, transforms, key resolver, continue preconditions).
+- [x] Implement agent event lifecycle parity (`agent_start/end`, `turn_start/end`, `message_*`, `tool_execution_*`).
+- [x] Implement tool execution parity (sequential/parallel, overrides, hooks, streaming updates, terminate semantics).
+- [x] Implement steering/follow-up parity (queue modes, drain/clear, turn-loop injection).
+- [x] Implement high-level `Agent` class parity (`continue`, abort/wait/reset, subscriptions, streaming/queue state).
+- [x] Implement proxy transport parity (`proxy.ts` stream decode/reconstruct, partial JSON, finalization).
+- [x] Add parity unit tests matching `packages/agent/test` behaviors.
+- [x] Raise test coverage to project target (completed at 96% line coverage).
 
-### Phase 4: Coding Agent CLI (py-coding-agent)
+### Phase 4: Coding Agent CLI (`py-coding-agent`)
 
 **Status:** Completed
 
-1. Implement multi-mode execution (interactive, print, JSON, RPC). Initial mode scaffold and tests implemented.
-2. Set up Textual-based TUI with editor, keyboard shortcuts, and slash commands.
-   Learned implementation details from `pi-mono/packages/coding-agent` to apply now:
-   - Keep UI composition explicit: header/status/transcript/editor/footer are separate components, and editor focus is restored after temporary UI flows.
-   - Use an editor wrapper that handles app-level shortcuts first (interrupt/clear/exit/model-cycling/tool-expansion), then delegates to core editor behavior.
-   - Define slash commands as a central command set (name + description) and reuse it for both autocomplete metadata and execution dispatch.
-   - Dispatch slash commands through a command map (not ad-hoc branching), with strict behavior: clear editor after handled commands, keep plain text for non-command input.
-   - Preserve interactive responsiveness during long-running tasks: interrupt key should abort active work, while new input can be queued instead of dropped.
-   - Separate UI event handling from runtime actions so command parsing/shortcut logic remains unit-testable without terminal rendering dependencies.
-   - Maintain discoverability parity: expose a built-in “hotkeys/help” command and keep keybinding labels consistent with configured shortcuts.
-3. Add session management with JSONL persistence and branching. Initial implementation and tests completed.
-4. Implement compaction system with token management and summarization.
-   Learned implementation details from `pi-mono/packages/coding-agent` to apply now:
-   - Trigger rule parity baseline: compact when `context_tokens > context_window - reserve_tokens`.
-   - Default settings parity baseline: `reserve_tokens=16384`, `keep_recent_tokens=20000`, `enabled=true`.
-   - Keep-boundary strategy: preserve newest messages inside `keep_recent_tokens`, summarize older messages into one structured checkpoint.
-   - Session persistence parity baseline: append compaction entries to JSONL and rebuild effective context from latest compaction boundary.
-   - Structured summary contract parity baseline: `Goal`, `Constraints & Preferences`, `Progress`, `Key Decisions`, `Next Steps`, `Critical Context`.
-     Deferred to future phase items (depends on not-yet-implemented capabilities, especially tools and full agent runtime integration):
-5. Add extension system with hooks and event-driven architecture. Initial event bus and interaction hooks implemented.
-6. Integrate built-in tools (read, write, edit, bash, find, grep) with sandboxing policies.
-   Initial implementation completed:
-   - Added a typed built-in tool executor with `read`, `write`, `edit`, `bash`, `find`, `grep`.
-   - Added sandbox policy checks for read/write/execute with allowed-root path confinement.
-   - Integrated tool execution into RPC mode (`method="tool"`) with structured success/error payloads.
-   - Added unit tests for tool behavior and sandbox policy denial paths.
-7. Add incremental skills system with folder-based loading.
-   Redefined scope:
-   - Each skill is a folder under a skills root; `SKILL.md` is required and optional extra files are loadable by relative path.
-   - Introduce a skill database object that supports progressive disclosure:
-     brief skill enumeration (`name`, `description`) without loading full content.
-   - Expose skill-management tools to the LLM:
-     `list_skills`, `list_skill_files`, `load_skill`.
-   - Add extra incremental tool:
-     `load_skill_file` to fetch one specific file only when needed.
-   - Add discovery helper:
-     `list_active_skill_tools` for runtime visibility after activation.
-   - Skill activation:
-     when loading with activation enabled, `<skill>/tool` is dynamically loaded as a Python module.
-   - Activated skill tools are exposed to the LLM as namespaced tool names (`skill.<skill-name>.<tool-name>`).
-   - No RPC coupling for skills:
-     skill loading/activation is handled directly in Python runtime objects.
-     Initial implementation completed:
-   - Added `SkillDatabase` with validation, listing, file loading, and activation flows.
-   - Added tests for listing/loading, path safety, and dynamic tool activation.
-8. Implement settings and configuration with TOML files. Initial defaults loading and CLI override behavior implemented.
-9. Create unit tests for CLI components.
+- [x] Implement multi-mode execution (interactive, print, JSON, RPC).
+- [x] Implement Textual TUI (editor, shortcuts, slash commands).
+- [x] Add session management with JSONL persistence and branching.
+- [x] Implement compaction with token management and summarization.
+- [x] Add extension system with hooks and event-driven architecture.
+- [x] Integrate built-in tools (`read`, `write`, `edit`, `bash`, `find`, `grep`) with sandbox policy enforcement.
+- [x] Add incremental folder-based skills system (`list_skills`, `list_skill_files`, `load_skill`, `load_skill_file`, activation + namespaced tools).
+- [x] Implement TOML settings/config plus CLI overrides.
+- [x] Add unit tests for CLI components.
 
 ### Phase 5: Sandboxing Implementation
 
 **Status:** In progress
 
-1. Define permission system for read/write/execute policies.
-   Status: Completed.
-   - Added `ToolPermissionPolicy` as an explicit read/write/execute policy object.
-   - Wired `ToolSandboxPolicy` permission checks through the policy object while preserving existing flags for backward compatibility.
-   - Added unit tests for allow/deny behavior and sandbox-policy permission projection.
-2. Implement safe bash interpreter as Python-based sh subset parser.
-   Status: In progress.
-   Granular implementation plan:
-   - [x] Define shell subset and typed AST nodes (commands, args, env assignments, redirections, pipelines).
-   - [x] Implement parser stages as composable elements (tokenizer, parser, validator, planner).
-   - [x] Add conditional pipeline connectors (`&&`, `||`) with short-circuit execution semantics.
-   - [x] Add runtime cancellation/signal propagation model for execution events.
-   - [x] Design extensibility hooks for adding new syntax elements/handlers safely.
-   - [x] Integrate parser/registry/runtime path into `bash` execution with safe command parsing and redirection policy enforcement.
-   - [x] Implement command argument parsing infrastructure reusable across built-in shell commands.
-   - [x] Implement parser-level glob expansion and pass expanded argv to command handlers.
-   - [x] Implement built-in `grep` command handler.
-   - [x] Implement built-in `ls` command handler.
-   - [x] Implement built-in `dir` command handler.
-   - [x] Implement built-in `cd` command handler.
-   - [x] Implement built-in `pwd` command handler.
-   - [x] Implement built-in `cp` command handler.
-   - [x] Implement built-in `mv` command handler.
-   - [x] Implement built-in `cat` command handler.
-   - [x] Implement built-in `head` command handler.
-   - [x] Implement built-in `tail` command handler.
-   - [x] Implement built-in `mkdir` command handler.
-   - [ ] Add execution safety limits (timeouts/output size/pipeline bounds enforcement at runtime) and finalize strict behavior docs.
-   Completed progress:
-   - Added `shell_subset` AST models and structural validation helpers in `py-agent-tools`.
-   - Added composable parser stages with `ShlexTokenizer` and `ShellSubsetParser` to produce validated shell-subset AST programs.
-   - Added conditional parsing/execution for `&&` and `||` with short-circuit behavior.
-   - Added shell runtime primitives for cancellation tokens and structured execution event emission.
-   - Added extensible shell command registry primitives for modular command-handler registration.
-   - Added shared shell argument parsing utilities for reusable command option/value handling.
-   - Added parser-level glob expansion (`*`, `?`, `[]`) before handler execution.
-   - Added built-in shell commands: `grep`, `ls`, `dir`, `cd`, `pwd`, `cp`, `mv`, `cat`, `head`, `tail`, `mkdir`.
-   - Replaced full-shell invocation in `bash` with parsed subset execution (including `;`, `&&`, `||`, pipeline handling, and policy-aware redirection checks).
-3. Integrate permissions into read, write, and bash tools.
-   Status: Completed.
-   - Read/write permissions are enforced through `ToolPermissionPolicy` and allowed-root confinement.
-   - Bash execution permission is enforced before execution, and redirections now enforce read/write path permissions.
-4. Add configuration options for permission policies.
-   Status: Not started.
+- [x] Define permission system for read/write/execute policies.
+- [x] Implement safe bash interpreter as Python-based sh subset parser.
+  - [x] Define shell subset and typed AST nodes (commands, args, env assignments, redirections, pipelines).
+  - [x] Implement parser stages as composable elements (tokenizer, parser, validator, planner).
+  - [x] Add conditional connectors (`&&`, `||`) with short-circuit semantics.
+  - [x] Add runtime cancellation/signal propagation execution model.
+  - [x] Design extensibility hooks for safe syntax/handler extension.
+  - [x] Integrate parser/registry/runtime into `bash` execution with redirection policy checks.
+  - [x] Implement reusable command argument parsing infrastructure.
+  - [x] Implement parser-level glob expansion with expanded argv dispatch.
+  - [x] Implement built-in command handlers: `grep`, `ls`, `dir`, `cd`, `pwd`, `cp`, `mv`, `cat`, `head`, `tail`, `mkdir`.
+  - [x] Add execution safety limits (timeouts/output size/pipeline/command bounds) and strict behavior docs.
+- [x] Integrate permissions into read, write, and bash tools.
+- [ ] Add configuration options for permission policies.
 
 ### Phase 6: Integration and CLI Installation
 
-1. Integrate components: py-coding-agent uses py-agent and llm-providers.
-2. Set up CLI tool installation as standalone program.
-3. Add configuration loading and environment setup.
-4. Implement system prompt construction with context injection.
+**Status:** Not started
 
-**Relevant files**
+- [ ] Integrate components so `py-coding-agent` uses `py-agent` and `llm-providers`.
+- [ ] Set up CLI installation as a standalone program.
+- [ ] Add configuration loading and environment setup.
+- [ ] Implement system prompt construction with context injection.
 
-- `pyproject.toml` — Root workspace configuration
-- `llm-providers/pyproject.toml` — Provider package setup
-- `py-agent/pyproject.toml` — Agent framework setup
-- `py-coding-agent/pyproject.toml` — CLI tool setup
-- `llm-providers/src/` — Ported provider code from pi-mono/packages/ai/src/
-- `py-agent/src/` — Ported agent code from pi-mono/packages/agent/src/
-- `py-coding-agent/src/` — Ported coding agent code from pi-mono/packages/coding-agent/src/
+## Relevant files
 
-**Verification**
+- `pyproject.toml` - Root workspace configuration
+- `llm-providers/pyproject.toml` - Provider package setup
+- `py-agent/pyproject.toml` - Agent framework setup
+- `py-coding-agent/pyproject.toml` - CLI tool setup
+- `llm-providers/src/` - Provider implementation
+- `py-agent/src/` - Agent framework implementation
+- `py-coding-agent/src/` - Coding agent implementation
 
-1. Run ruff, basedpyright, mypy on each component after implementation to ensure type safety.
-2. Execute unit tests with python -m unittest for each package.
-3. Test CLI installation and basic interactive mode functionality.
-4. Verify LLM provider connections with smoke tests for Anthropic and OpenAI.
-5. Test tool execution with sandboxing policies enabled.
-6. Validate session persistence and compaction with sample sessions.
-7. Validate event-stream compatibility against expected communication lifecycle semantics.
-8. Validate cross-provider handoff and context replay behavior with mixed-provider conversations.
-9. Validate abort/error/overflow communication paths and tool-call/tool-result edge cases.
-10. Validate `py-agent` behavior against `pi-mono/packages/agent` reference scenarios (loop, queues, tools, proxy) with explicit parity tests.
+## Verification Checklist
 
-**Decisions**
+- [x] Run ruff, basedpyright, and mypy on modified components.
+- [x] Run unit tests for modified components through coverage (`coverage run ...`, `coverage report --fail-under=90`).
+- [ ] Validate CLI installation and baseline interactive mode.
+- [ ] Validate provider smoke tests (Anthropic/OpenAI).
+- [ ] Validate sandboxed tool execution paths.
+- [ ] Validate session persistence and compaction behavior.
+- [ ] Validate event-stream lifecycle semantics.
+- [ ] Validate cross-provider handoff/context replay.
+- [ ] Validate abort/error/overflow and tool-call/tool-result edge cases.
+- [ ] Validate `py-agent` parity against `pi-mono/packages/agent` loop/queue/tools/proxy scenarios.
 
-- LLM providers: Start with Anthropic, OpenAI, OpenAI-compatible; extensible for others.
-- Provider scope remains limited to current providers for now; parity work focuses on communication behavior.
-- Sandboxing: Permission-based policies on tools, safe bash interpreter.
-- TUI: Use Textual library for Python CLI interface.
-- Exclusions: web-ui, pods, mom packages not implemented.
-- Testing: Python unittests only, no pytest.
+## Decisions
 
-**Further Considerations**
+- LLM providers: Anthropic, OpenAI, OpenAI-compatible first.
+- Sandboxing: permission-based policies plus safe bash interpreter.
+- TUI: Textual for CLI.
+- Exclusions: web-ui/pods/mom packages.
+- Testing: `unittest` only.
 
-1. For local model support via OpenAI-compatible, clarify which local servers to target (e.g., Ollama, vLLM).
-2. Consider adding Docker-based sandboxing as an optional advanced mode beyond permission policies.
+## Further Considerations
+
+- [ ] Clarify target local model servers for OpenAI-compatible provider (for example, Ollama or vLLM).
+- [ ] Consider optional Docker sandbox mode beyond permission policies.

@@ -1,6 +1,7 @@
 """Public API for reusable built-in agent tools."""
 
 from .builtin import (
+    BashExecutionLimits,
     BashResult,
     BuiltinToolExecutor,
     GrepMatch,
@@ -47,6 +48,7 @@ from .shell_subset import (
 )
 
 __all__ = [
+    "BashExecutionLimits",
     "BashResult",
     "BuiltinToolExecutor",
     "GrepMatch",
@@ -85,4 +87,3 @@ __all__ = [
     "parse_shell_command",
     "validate_shell_program",
 ]
-

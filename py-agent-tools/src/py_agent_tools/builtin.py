@@ -8,6 +8,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic
 from typing import Literal
 
 from .shell_args import ShellArgParser, ShellArgsError
@@ -36,6 +37,8 @@ from .shell_subset import (
 type ToolName = Literal["read", "write", "edit", "bash", "find", "grep"]
 type PermissionName = Literal["read", "write", "execute"]
 MIN_COPY_MOVE_ARGS = 2
+SHELL_TIMEOUT_EXIT_CODE = 124
+SHELL_LIMIT_EXIT_CODE = 125
 
 
 class ToolError(Exception):
@@ -173,6 +176,16 @@ class BashResult:
 
 
 @dataclass(slots=True, frozen=True)
+class BashExecutionLimits:
+    """Runtime safety limits for shell-subset command execution."""
+
+    max_execution_seconds: float = 10.0
+    max_output_bytes: int = 262_144
+    max_pipelines: int = 8
+    max_commands: int = 32
+
+
+@dataclass(slots=True, frozen=True)
 class ToolSandboxPolicy:
     """Permission policy for built-in tools."""
 
@@ -234,10 +247,12 @@ class BuiltinToolExecutor:
         *,
         cwd: Path,
         policy: ToolSandboxPolicy | None = None,
+        bash_limits: BashExecutionLimits | None = None,
         shell_registry: ShellCommandRegistry | None = None,
     ) -> None:
         self._cwd = cwd.resolve()
         self._policy = policy or ToolSandboxPolicy.from_cwd(self._cwd)
+        self._bash_limits = bash_limits or BashExecutionLimits()
         self._shell_registry = shell_registry or self._build_default_shell_registry()
 
     def execute(self, tool_name: str, arguments: dict[str, object]) -> object:
@@ -308,7 +323,11 @@ class BuiltinToolExecutor:
         except (ShellParseError, ShellSubsetError) as exc:
             raise ToolError.invalid_bash_command(str(exc)) from exc
         cancellation = ShellCancellationToken.create()
-        completed = self._execute_shell_program(program, cancellation=cancellation)
+        completed = self._execute_shell_program(
+            program,
+            cancellation=cancellation,
+            limits=self._bash_limits,
+        )
         return BashResult(
             stdout=completed.stdout,
             stderr=completed.stderr,
@@ -368,27 +387,41 @@ class BuiltinToolExecutor:
         program: ShellProgram,
         *,
         cancellation: ShellCancellationToken,
+        limits: BashExecutionLimits,
     ) -> ShellCommandResult:
         stdout_chunks: list[str] = []
         stderr_chunks: list[str] = []
         last_exit_code = 0
         runtime_cwd = self._cwd
-        for pipeline_index, step in enumerate(program.steps):
-            if not _should_run_pipeline(step.condition, last_exit_code):
-                continue
-            result = self._execute_pipeline(
-                step.pipeline,
-                pipeline_index=pipeline_index,
-                cancellation=cancellation,
-                cwd=runtime_cwd,
+        budget = _ShellExecutionBudget(limits=limits, started_at=monotonic())
+        try:
+            for pipeline_index, step in enumerate(program.steps):
+                if not _should_run_pipeline(step.condition, last_exit_code):
+                    continue
+                budget.ensure_time_remaining()
+                budget.note_pipeline()
+                result = self._execute_pipeline(
+                    step.pipeline,
+                    pipeline_index=pipeline_index,
+                    cancellation=cancellation,
+                    cwd=runtime_cwd,
+                    budget=budget,
+                )
+                if result.stdout:
+                    stdout_chunks.append(result.stdout)
+                if result.stderr:
+                    stderr_chunks.append(result.stderr)
+                last_exit_code = result.exit_code
+                if result.next_cwd is not None:
+                    runtime_cwd = result.next_cwd
+        except _ShellExecutionLimitError as exc:
+            stderr_chunks.append(f"{exc.message}\n")
+            return ShellCommandResult(
+                stdout="".join(stdout_chunks),
+                stderr="".join(stderr_chunks),
+                exit_code=exc.exit_code,
+                next_cwd=runtime_cwd,
             )
-            if result.stdout:
-                stdout_chunks.append(result.stdout)
-            if result.stderr:
-                stderr_chunks.append(result.stderr)
-            last_exit_code = result.exit_code
-            if result.next_cwd is not None:
-                runtime_cwd = result.next_cwd
         return ShellCommandResult(
             stdout="".join(stdout_chunks),
             stderr="".join(stderr_chunks),
@@ -403,6 +436,7 @@ class BuiltinToolExecutor:
         pipeline_index: int,
         cancellation: ShellCancellationToken,
         cwd: Path,
+        budget: _ShellExecutionBudget,
     ) -> ShellCommandResult:
         pipeline_input = ""
         pipeline_stderr: list[str] = []
@@ -410,6 +444,8 @@ class BuiltinToolExecutor:
         runtime_cwd = cwd
         for command_index, command in enumerate(pipeline.commands):
             cancellation.ensure_active()
+            budget.ensure_time_remaining()
+            budget.note_command()
             command_text = _render_command_text(command)
             emit_shell_event(
                 None,
@@ -429,7 +465,10 @@ class BuiltinToolExecutor:
                     command_index=command_index,
                     cwd=runtime_cwd,
                 ),
+                budget=budget,
             )
+            budget.note_output(result.stdout)
+            budget.note_output(result.stderr)
             if result.stderr:
                 pipeline_stderr.append(result.stderr)
             if result.exit_code != 0:
@@ -465,6 +504,7 @@ class BuiltinToolExecutor:
         stdin: str,
         cancellation: ShellCancellationToken,
         metadata: _CommandExecutionMeta,
+        budget: _ShellExecutionBudget,
     ) -> ShellCommandResult:
         command_input, output_redirects = self._prepare_redirections(
             command.redirections,
@@ -476,6 +516,7 @@ class BuiltinToolExecutor:
             stdin=command_input,
             cancellation=cancellation,
             cwd=metadata.cwd,
+            budget=budget,
         )
         visible_result = self._apply_output_redirections(
             output_redirects,
@@ -566,12 +607,17 @@ class BuiltinToolExecutor:
         stdin: str,
         cancellation: ShellCancellationToken,
         cwd: Path,
+        budget: _ShellExecutionBudget,
     ) -> ShellCommandResult:
         context = ShellCommandContext(cwd=cwd, stdin=stdin)
         try:
             handler = self._shell_registry.resolve(command.program)
         except ShellRegistryError:
-            return self._run_external_command(command, context=context)
+            return self._run_external_command(
+                command,
+                context=context,
+                budget=budget,
+            )
         return handler(
             context=context,
             arguments=command.arguments,
@@ -584,9 +630,13 @@ class BuiltinToolExecutor:
         command: ShellSimpleCommand,
         *,
         context: ShellCommandContext,
+        budget: _ShellExecutionBudget,
     ) -> ShellCommandResult:
         argv = [command.program, *command.arguments]
         env = _merge_command_environment(command.env_assignments)
+        timeout_seconds = budget.remaining_seconds()
+        if timeout_seconds <= 0:
+            raise _ShellExecutionLimitError.timeout_exceeded()
         try:
             completed = subprocess.run(  # noqa: S603
                 argv,
@@ -596,10 +646,13 @@ class BuiltinToolExecutor:
                 cwd=context.cwd,
                 input=context.stdin,
                 env=env,
+                timeout=timeout_seconds,
             )
         except FileNotFoundError:
             message = f"Command not found: {command.program}\n"
             return ShellCommandResult(stdout="", stderr=message, exit_code=127)
+        except subprocess.TimeoutExpired as exc:
+            raise _ShellExecutionLimitError.timeout_exceeded() from exc
         return ShellCommandResult(
             stdout=completed.stdout,
             stderr=completed.stderr,
@@ -1001,6 +1054,76 @@ class _CommandExecutionMeta:
     pipeline_index: int
     command_index: int
     cwd: Path
+
+
+@dataclass(slots=True)
+class _ShellExecutionBudget:
+    limits: BashExecutionLimits
+    started_at: float
+    pipeline_count: int = 0
+    command_count: int = 0
+    output_bytes: int = 0
+
+    def elapsed_seconds(self) -> float:
+        return monotonic() - self.started_at
+
+    def remaining_seconds(self) -> float:
+        return self.limits.max_execution_seconds - self.elapsed_seconds()
+
+    def ensure_time_remaining(self) -> None:
+        if self.remaining_seconds() <= 0:
+            raise _ShellExecutionLimitError.timeout_exceeded()
+
+    def note_pipeline(self) -> None:
+        self.pipeline_count += 1
+        if self.pipeline_count > self.limits.max_pipelines:
+            raise _ShellExecutionLimitError.pipeline_limit_exceeded(
+                self.limits.max_pipelines
+            )
+
+    def note_command(self) -> None:
+        self.command_count += 1
+        if self.command_count > self.limits.max_commands:
+            raise _ShellExecutionLimitError.command_limit_exceeded(
+                self.limits.max_commands
+            )
+
+    def note_output(self, text: str) -> None:
+        if not text:
+            return
+        self.output_bytes += len(text.encode("utf-8"))
+        if self.output_bytes > self.limits.max_output_bytes:
+            raise _ShellExecutionLimitError.output_limit_exceeded(
+                self.limits.max_output_bytes
+            )
+
+
+@dataclass(slots=True, frozen=True)
+class _ShellExecutionLimitError(Exception):
+    message: str
+    exit_code: int
+
+    @classmethod
+    def timeout_exceeded(cls) -> _ShellExecutionLimitError:
+        return cls(
+            message="Shell execution timed out before completion.",
+            exit_code=SHELL_TIMEOUT_EXIT_CODE,
+        )
+
+    @classmethod
+    def output_limit_exceeded(cls, max_output_bytes: int) -> _ShellExecutionLimitError:
+        message = f"Shell output exceeded limit ({max_output_bytes} bytes)."
+        return cls(message=message, exit_code=SHELL_LIMIT_EXIT_CODE)
+
+    @classmethod
+    def pipeline_limit_exceeded(cls, max_pipelines: int) -> _ShellExecutionLimitError:
+        message = f"Shell pipeline limit exceeded ({max_pipelines})."
+        return cls(message=message, exit_code=SHELL_LIMIT_EXIT_CODE)
+
+    @classmethod
+    def command_limit_exceeded(cls, max_commands: int) -> _ShellExecutionLimitError:
+        message = f"Shell command limit exceeded ({max_commands})."
+        return cls(message=message, exit_code=SHELL_LIMIT_EXIT_CODE)
 
 
 def _parse_line_count_args(arguments: tuple[str, ...]) -> _LineCountArgs:
